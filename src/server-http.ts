@@ -35,15 +35,12 @@ function buildApi(): SpendeskClient {
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
-// Build allowedHosts: from ALLOWED_HOSTS (comma-separated) or default; when binding to 0.0.0.0/:: always allow those hostnames so requests to the bind address succeed
-const allowedHostsRaw = process.env.ALLOWED_HOSTS;
-const baseHosts =
-  allowedHostsRaw?.trim()
-    ? allowedHostsRaw.split(",").map((h) => h.trim()).filter(Boolean)
-    : ["localhost", "127.0.0.1", "[::1]"];
-const bindHosts = HOST === "0.0.0.0" || HOST === "::" ? ["0.0.0.0", "::"] : [];
-const allowedHostsList = [...new Set([...baseHosts, ...bindHosts])];
-const allowedHosts = allowedHostsList.length ? allowedHostsList : undefined;
+// Build allowedHosts only when ALLOWED_HOSTS is set (e.g. in production). When unset, no validation so healthchecks and first deploy succeed (e.g. Railway); set ALLOWED_HOSTS to your public domain and redeploy to restrict hosts.
+const allowedHostsRaw = process.env.ALLOWED_HOSTS?.trim();
+const allowedHostsList = allowedHostsRaw
+  ? [...new Set([...allowedHostsRaw.split(",").map((h) => h.trim()).filter(Boolean), ...(HOST === "0.0.0.0" || HOST === "::" ? ["0.0.0.0", "::"] : [])])]
+  : undefined;
+const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 
 const app = createMcpExpressApp({ host: HOST, ...(allowedHosts && { allowedHosts }) });
 
