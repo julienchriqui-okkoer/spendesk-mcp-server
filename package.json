@@ -1,0 +1,36 @@
+{
+  "name": "spendesk-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Spendesk Public API - ERP integrations and dashboards",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "spendesk-mcp-server": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "start:http": "node dist/server-http.js"
+  },
+  "keywords": [
+    "mcp",
+    "spendesk",
+    "api",
+    "erp",
+    "integration"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@types/express": "^5.0.0"
+  }
+}
