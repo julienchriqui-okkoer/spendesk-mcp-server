@@ -14,7 +14,8 @@ const MCP_URL = `${BASE}/mcp`;
 
 /** Parse first JSON-RPC result from SSE stream (data: {...} lines). */
 async function parseSSEJson(body) {
-  const text = await body.getReader().then((r) => readStream(r));
+  const reader = body.getReader();
+  const text = await readStream(reader);
   const lines = text.split(/\r?\n/);
   for (const line of lines) {
     if (line.startsWith("data:")) {

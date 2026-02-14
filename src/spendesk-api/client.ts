@@ -59,11 +59,22 @@ export class SpendeskClient {
       "Content-Type": "application/json",
       Accept: "application/json",
     };
-    const res = await fetch(url.toString(), {
-      method,
-      headers,
-      body: options?.body ? JSON.stringify(options.body) : undefined,
-    });
+    let res: Response;
+    try {
+      res = await fetch(url.toString(), {
+        method,
+        headers,
+        body: options?.body ? JSON.stringify(options.body) : undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const cause = err instanceof Error && (err as { cause?: { message?: string } }).cause?.message;
+      throw new SpendeskApiError(
+        cause ? `Spendesk API request failed: ${msg} (${cause})` : `Spendesk API request failed: ${msg}`,
+        undefined,
+        undefined
+      );
+    }
     const text = await res.text();
     let data: T;
     try {
