@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 /**
  * Spendesk MCP Server (Streamable HTTP)
  * Exposes the same MCP over HTTP for use with ChatGPT, etc.

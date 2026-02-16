@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 /**
  * Spendesk MCP Server (stdio)
  * @see https://developer.spendesk.com/reference/general

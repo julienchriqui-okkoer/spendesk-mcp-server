@@ -10,6 +10,8 @@ export const SpendeskPaths = {
   getSettlements: `${V1}/settlements`,
   updateSettlementState: (id: string) => `${V1}/settlements/${id}/state`,
   getBankFees: `${V1}/bank-fees`,
+  /** List payables (if supported by API). */
+  getPayables: `${V1}/payables`,
   createPayablesSnapshot: `${V1}/payables/snapshots`,
   getPayablesSnapshot: (id: string) => `${V1}/payables/snapshots/${id}`,
   getPayableById: (id: string) => `${V1}/payables/${id}`,

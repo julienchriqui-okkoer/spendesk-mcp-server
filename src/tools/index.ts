@@ -24,6 +24,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.put(SpendeskPaths.updateSettlementState(args.settlementId as string), { state: args.state });
       case "spendesk_get_bank_fees":
         return api.get(SpendeskPaths.getBankFees, paginate(args as { page?: number; perPage?: number }));
+      case "spendesk_get_payables":
+        return api.get(SpendeskPaths.getPayables, paginate(args as { page?: number; perPage?: number }));
       case "spendesk_create_payables_snapshot":
         return api.post(SpendeskPaths.createPayablesSnapshot, args.payload);
       case "spendesk_get_payables_snapshot":
@@ -116,6 +118,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     "Get bank fees. Useful for accounting and dashboards.",
     paginationSchema,
     async (args) => toContent(await run("spendesk_get_bank_fees", args))
+  );
+  mcp.tool(
+    "spendesk_get_payables",
+    "List payables (invoices, credit notes) with pagination. Use when GET /v1/payables is available.",
+    paginationSchema,
+    async (args) => toContent(await run("spendesk_get_payables", args))
   );
   mcp.tool(
     "spendesk_create_payables_snapshot",
