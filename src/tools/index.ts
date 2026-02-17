@@ -29,6 +29,23 @@ const settlementsSchema = {
   filters: filtersSchema, // Keep filters for any additional parameters
 };
 
+// Specific schema for purchase orders with dedicated parameters
+const purchaseOrdersSchema = {
+  ...paginationSchema,
+  status: z.string().optional().describe("Filter purchase orders by status"),
+  state: z.string().optional().describe("Filter purchase orders by state"),
+  supplierId: z.string().optional().describe("Filter purchase orders by supplier ID"),
+  userId: z.string().optional().describe("Filter purchase orders by user ID (requester)"),
+  from: z.string().optional().describe("Filter purchase orders created from this date (ISO 8601 format)"),
+  to: z.string().optional().describe("Filter purchase orders created until this date (ISO 8601 format)"),
+  createdFrom: z.string().optional().describe("Filter purchase orders created from this date (ISO 8601 format)"),
+  createdTo: z.string().optional().describe("Filter purchase orders created until this date (ISO 8601 format)"),
+  updatedFrom: z.string().optional().describe("Filter purchase orders updated from this date (ISO 8601 format)"),
+  updatedTo: z.string().optional().describe("Filter purchase orders updated until this date (ISO 8601 format)"),
+  ids: z.union([z.string(), z.array(z.string())]).optional().describe("Filter by purchase order ID(s). Can be a single ID string or array of IDs"),
+  filters: filtersSchema, // Keep filters for any additional parameters
+};
+
 function paginate(args: { page?: number; perPage?: number }): Record<string, string> {
   const p: Record<string, string> = {};
   if (args.page != null) p.page = String(args.page);
@@ -76,6 +93,63 @@ function buildSettlementsQueryParams(args: {
   if (args.state != null) params.state = String(args.state);
   if (args.paidFrom != null) params.paidFrom = String(args.paidFrom);
   if (args.exportedAfter != null) params.exportedAfter = String(args.exportedAfter);
+  
+  // Handle ids parameter (can be string or array)
+  if (args.ids != null) {
+    if (Array.isArray(args.ids)) {
+      // If array, join with comma (common API pattern)
+      params.ids = args.ids.join(",");
+    } else {
+      params.ids = String(args.ids);
+    }
+  }
+  
+  // Add any additional filters
+  if (args.filters) {
+    for (const [key, value] of Object.entries(args.filters)) {
+      if (value != null && !params[key]) { // Don't override dedicated params
+        params[key] = String(value);
+      }
+    }
+  }
+  
+  return params;
+}
+
+/**
+ * Build query params specifically for purchase orders with dedicated parameters.
+ */
+function buildPurchaseOrdersQueryParams(args: {
+  page?: number;
+  perPage?: number;
+  status?: string;
+  state?: string;
+  supplierId?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+  ids?: string | string[];
+  filters?: Record<string, unknown>;
+}): Record<string, string> {
+  const params = paginate(args);
+  
+  // Add dedicated purchase order parameters
+  if (args.status != null) params.status = String(args.status);
+  if (args.state != null) params.state = String(args.state);
+  if (args.supplierId != null) params.supplierId = String(args.supplierId);
+  if (args.userId != null) params.userId = String(args.userId);
+  
+  // Date filters - support both short (from/to) and explicit (createdFrom/createdTo, updatedFrom/updatedTo) formats
+  if (args.from != null) params.from = String(args.from);
+  if (args.to != null) params.to = String(args.to);
+  if (args.createdFrom != null) params.createdFrom = String(args.createdFrom);
+  if (args.createdTo != null) params.createdTo = String(args.createdTo);
+  if (args.updatedFrom != null) params.updatedFrom = String(args.updatedFrom);
+  if (args.updatedTo != null) params.updatedTo = String(args.updatedTo);
   
   // Handle ids parameter (can be string or array)
   if (args.ids != null) {
@@ -206,7 +280,22 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_get_purchase_orders":
         return api.get(
           SpendeskPaths.getPurchaseOrders,
-          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+          buildPurchaseOrdersQueryParams(args as {
+            page?: number;
+            perPage?: number;
+            status?: string;
+            state?: string;
+            supplierId?: string;
+            userId?: string;
+            from?: string;
+            to?: string;
+            createdFrom?: string;
+            createdTo?: string;
+            updatedFrom?: string;
+            updatedTo?: string;
+            ids?: string | string[];
+            filters?: Record<string, unknown>;
+          })
         );
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
@@ -416,8 +505,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders —————————————————————————————————————————————————──────
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders list. Use 'filters' to pass any API query parameters.",
-    listSchema,
+    "Get purchase orders list. Supports dedicated parameters (status, state, supplierId, userId, from/to dates, createdFrom/createdTo, updatedFrom/updatedTo, ids) and 'filters' for any additional API query parameters.",
+    purchaseOrdersSchema,
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );
   mcp.tool(
