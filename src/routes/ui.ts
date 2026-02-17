@@ -192,22 +192,46 @@ export function getRegisterForm(_req: Request, res: Response): void {
       
       const token = tokenInput.value.trim();
       
+      if (!token) {
+        errorDiv.textContent = 'Veuillez entrer un token';
+        errorDiv.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Enregistrer';
+        return;
+      }
+      
       try {
+        console.log('Sending registration request...');
         const res = await fetch('/ui/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token })
         });
         
-        const data = await res.json();
+        console.log('Response status:', res.status);
+        const text = await res.text();
+        console.log('Response text:', text.substring(0, 200));
         
-        if (!res.ok) {
-          throw new Error(data.error || 'Erreur lors de l\'enregistrement');
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (parseErr) {
+          throw new Error('Réponse invalide du serveur: ' + text.substring(0, 100));
         }
         
+        if (!res.ok) {
+          throw new Error(data.error || \`Erreur \${res.status}: \${res.statusText}\`);
+        }
+        
+        if (!data.apiKey) {
+          throw new Error('Clé API non reçue du serveur');
+        }
+        
+        console.log('Registration successful, redirecting...');
         // Redirect to success page with API key
         window.location.href = \`/ui/success?apiKey=\${encodeURIComponent(data.apiKey)}\`;
       } catch (err) {
+        console.error('Registration error:', err);
         errorDiv.textContent = err.message || 'Une erreur est survenue';
         errorDiv.classList.add('show');
         submitBtn.disabled = false;
@@ -225,27 +249,37 @@ export function getRegisterForm(_req: Request, res: Response): void {
  */
 export async function registerClient(req: Request, res: Response): Promise<void> {
   try {
-    const { token } = req.body;
+    console.log("[Register] Request received");
+    console.log("[Register] Body:", req.body);
+    console.log("[Register] Content-Type:", req.get("content-type"));
+    
+    const { token } = req.body || {};
     
     if (!token || typeof token !== "string" || !token.trim()) {
+      console.log("[Register] Missing or invalid token");
       res.status(400).json({ error: "Token is required" });
       return;
     }
 
     const trimmedToken = token.trim();
+    console.log("[Register] Token length:", trimmedToken.length);
 
     // Validate token with Spendesk API
+    console.log("[Register] Validating token with Spendesk API...");
     const isValid = await validateSpendeskToken(trimmedToken);
     if (!isValid) {
+      console.log("[Register] Token validation failed");
       res.status(400).json({
         error: "Invalid Spendesk token. Please verify your token is correct and has the required permissions.",
       });
       return;
     }
 
+    console.log("[Register] Token validated, creating client...");
     // Create client and get API key
     const client = getDbClient();
     const apiKey = client.createClient(trimmedToken);
+    console.log("[Register] Client created with API key:", apiKey.substring(0, 8) + "...");
 
     res.json({
       success: true,
