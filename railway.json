@@ -5,7 +5,7 @@
   },
   "deploy": {
     "startCommand": "node dist/server-http.js",
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 30
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 60
   }
 }

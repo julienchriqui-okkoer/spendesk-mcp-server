@@ -71,9 +71,10 @@ app.use((req: Request, res: Response, next) => {
 });
 
 app.get("/", (_req: Request, res: Response) => {
-  res.type("application/json").send(
+  res.status(200).type("application/json").send(
     JSON.stringify({
       name: "spendesk-mcp-server",
+      status: "ok",
       mcp: "/mcp",
       ui: "/ui",
       endpoints: {
@@ -82,6 +83,16 @@ app.get("/", (_req: Request, res: Response) => {
         delete: "DELETE /mcp (close session)",
         ui: "GET /ui (Client registration portal)",
       },
+    })
+  );
+});
+
+// Explicit healthcheck endpoint for Railway
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).type("application/json").send(
+    JSON.stringify({
+      status: "ok",
+      timestamp: new Date().toISOString(),
     })
   );
 });
@@ -164,11 +175,26 @@ app.delete("/mcp", async (req: Request, res: Response) => {
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`Spendesk MCP HTTP server listening on http://${HOST}:${PORT}`);
+  console.log(`✓ Spendesk MCP HTTP server listening on http://${HOST}:${PORT}`);
+  console.log("  GET  /health — Health check endpoint");
+  console.log("  GET  / — Server info");
   console.log("  POST /mcp — JSON-RPC (init and messages)");
   console.log("  GET  /mcp — SSE stream (send mcp-session-id header)");
   console.log("  DELETE /mcp — close session (send mcp-session-id header)");
   console.log("  GET  /ui — Client registration portal");
+  
+  // Log environment status
+  if (process.env.ENCRYPTION_KEY) {
+    console.log("✓ ENCRYPTION_KEY configured");
+  } else {
+    console.warn("⚠ ENCRYPTION_KEY not set - multi-tenant mode will not work");
+  }
+  
+  if (process.env.SPENDESK_API_TOKEN) {
+    console.log("✓ SPENDESK_API_TOKEN configured (fallback mode)");
+  } else {
+    console.warn("⚠ SPENDESK_API_TOKEN not set - clients must register via /ui");
+  }
 });
 
 process.on("SIGINT", async () => {
