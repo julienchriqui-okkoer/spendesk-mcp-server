@@ -250,48 +250,88 @@ export function getRegisterForm(_req: Request, res: Response): void {
 export async function registerClient(req: Request, res: Response): Promise<void> {
   try {
     console.log("[Register] Request received");
-    console.log("[Register] Body:", req.body);
+    console.log("[Register] Method:", req.method);
+    console.log("[Register] Path:", req.path);
     console.log("[Register] Content-Type:", req.get("content-type"));
+    console.log("[Register] Body type:", typeof req.body);
+    console.log("[Register] Body:", req.body);
     
-    const { token } = req.body || {};
-    
-    if (!token || typeof token !== "string" || !token.trim()) {
-      console.log("[Register] Missing or invalid token");
-      res.status(400).json({ error: "Token is required" });
-      return;
-    }
-
-    const trimmedToken = token.trim();
-    console.log("[Register] Token length:", trimmedToken.length);
-
-    // Validate token with Spendesk API
-    console.log("[Register] Validating token with Spendesk API...");
-    const isValid = await validateSpendeskToken(trimmedToken);
-    if (!isValid) {
-      console.log("[Register] Token validation failed");
-      res.status(400).json({
-        error: "Invalid Spendesk token. Please verify your token is correct and has the required permissions.",
+    // Try to get body from different sources
+    let body = req.body;
+    if (!body || (typeof body === "object" && Object.keys(body).length === 0)) {
+      // Body might not be parsed yet, try to read it manually
+      console.log("[Register] Body not parsed, attempting manual read");
+      const chunks: Buffer[] = [];
+      return new Promise((resolve) => {
+        req.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        req.on("end", async () => {
+          try {
+            const data = Buffer.concat(chunks).toString("utf8");
+            body = data ? JSON.parse(data) : {};
+            console.log("[Register] Manually parsed body:", body);
+            await processRegistration(body, req, res);
+            resolve();
+          } catch (err) {
+            console.error("[Register] Manual parse error:", err);
+            res.status(400).json({ error: "Invalid JSON body" });
+            resolve();
+          }
+        });
+        req.on("error", (err) => {
+          console.error("[Register] Stream error:", err);
+          res.status(500).json({ error: "Request stream error" });
+          resolve();
+        });
       });
-      return;
     }
-
-    console.log("[Register] Token validated, creating client...");
-    // Create client and get API key
-    const client = getDbClient();
-    const apiKey = client.createClient(trimmedToken);
-    console.log("[Register] Client created with API key:", apiKey.substring(0, 8) + "...");
-
-    res.json({
-      success: true,
-      apiKey,
-      message: "Client registered successfully",
-    });
+    
+    await processRegistration(body, req, res);
   } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Internal server error",
-    });
+    console.error("[Register] Handler error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Internal server error",
+      });
+    }
   }
+}
+
+async function processRegistration(body: any, req: Request, res: Response): Promise<void> {
+  const { token } = body || {};
+  
+  if (!token || typeof token !== "string" || !token.trim()) {
+    console.log("[Register] Missing or invalid token");
+    res.status(400).json({ error: "Token is required" });
+    return;
+  }
+
+  const trimmedToken = token.trim();
+  console.log("[Register] Token length:", trimmedToken.length);
+
+  // Validate token with Spendesk API
+  console.log("[Register] Validating token with Spendesk API...");
+  const isValid = await validateSpendeskToken(trimmedToken);
+  if (!isValid) {
+    console.log("[Register] Token validation failed");
+    res.status(400).json({
+      error: "Invalid Spendesk token. Please verify your token is correct and has the required permissions.",
+    });
+    return;
+  }
+
+  console.log("[Register] Token validated, creating client...");
+  // Create client and get API key
+  const client = getDbClient();
+  const apiKey = client.createClient(trimmedToken);
+  console.log("[Register] Client created with API key:", apiKey.substring(0, 8) + "...");
+
+  res.json({
+    success: true,
+    apiKey,
+    message: "Client registered successfully",
+  });
 }
 
 /**

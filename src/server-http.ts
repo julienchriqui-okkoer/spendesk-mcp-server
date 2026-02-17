@@ -7,7 +7,7 @@ import "dotenv/config";
  */
 
 import { randomUUID } from "node:crypto";
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -85,19 +85,28 @@ app.get("/health", (req: Request, res: Response) => {
 });
 
 // JSON body parser for UI routes
-app.use((req: Request, res: Response, next) => {
-  if (req.path.startsWith("/ui") && req.method === "POST") {
-    let data = "";
-    req.setEncoding("utf8");
-    req.on("data", (chunk) => {
-      data += chunk;
+// Parse JSON body for POST requests to /ui routes
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith("/ui") && req.method === "POST" && req.get("content-type")?.includes("application/json")) {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
     });
     req.on("end", () => {
       try {
+        const data = Buffer.concat(chunks).toString("utf8");
         req.body = data ? JSON.parse(data) : {};
-      } catch {
+        console.log("[BodyParser] Parsed body for", req.path, ":", Object.keys(req.body || {}));
+        next();
+      } catch (err) {
+        console.error("[BodyParser] Parse error:", err);
         req.body = {};
+        next();
       }
+    });
+    req.on("error", (err) => {
+      console.error("[BodyParser] Stream error:", err);
+      req.body = {};
       next();
     });
   } else {
@@ -123,9 +132,15 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 
-// UI Routes
+// UI Routes - Register BEFORE MCP routes to ensure they're not intercepted
 app.get("/ui", getRegisterForm);
-app.post("/ui/register", registerClient);
+app.post("/ui/register", async (req: Request, res: Response) => {
+  console.log("[UI Register] Route handler called");
+  console.log("[UI Register] Method:", req.method);
+  console.log("[UI Register] Path:", req.path);
+  console.log("[UI Register] Body:", req.body);
+  await registerClient(req, res);
+});
 app.get("/ui/success", getSuccessPage);
 
 // Apply authentication middleware to MCP routes
