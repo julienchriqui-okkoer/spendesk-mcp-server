@@ -41,9 +41,17 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
 // Build allowedHosts only when ALLOWED_HOSTS is set (e.g. in production). When unset, no validation so healthchecks and first deploy succeed (e.g. Railway); set ALLOWED_HOSTS to your public domain and redeploy to restrict hosts.
+// Always allow Railway's healthcheck hostname
+const railwayHealthcheckHost = "healthcheck.railway.app";
 const allowedHostsRaw = process.env.ALLOWED_HOSTS?.trim();
 const allowedHostsList = allowedHostsRaw
-  ? [...new Set([...allowedHostsRaw.split(",").map((h) => h.trim()).filter(Boolean), ...(HOST === "0.0.0.0" || HOST === "::" ? ["0.0.0.0", "::"] : [])])]
+  ? [
+      ...new Set([
+        ...allowedHostsRaw.split(",").map((h) => h.trim()).filter(Boolean),
+        railwayHealthcheckHost, // Always allow Railway healthcheck
+        ...(HOST === "0.0.0.0" || HOST === "::" ? ["0.0.0.0", "::"] : []),
+      ]),
+    ]
   : undefined;
 const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 
@@ -53,17 +61,22 @@ const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 const app = createMcpExpressApp({ host: HOST, ...(allowedHosts && { allowedHosts }) });
 
 // Register healthcheck FIRST, before any MCP middleware that might block it
+// This endpoint must be accessible without any host validation for Railway healthchecks
 app.get("/health", (req: Request, res: Response) => {
   try {
-    console.log(`[Healthcheck] Request from ${req.ip || req.socket.remoteAddress}`);
+    const clientHost = req.get("host") || req.hostname || "unknown";
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    console.log(`[Healthcheck] Request from ${clientIp} (host: ${clientHost})`);
+    
     const response = {
       status: "ok",
       timestamp: new Date().toISOString(),
       port: PORT,
       host: HOST,
       uptime: process.uptime(),
+      clientHost,
     };
-    console.log(`[Healthcheck] Sending response:`, response);
+    console.log(`[Healthcheck] Sending 200 OK response`);
     res.status(200).type("application/json").send(JSON.stringify(response));
   } catch (err) {
     console.error("[Healthcheck] Error:", err);
