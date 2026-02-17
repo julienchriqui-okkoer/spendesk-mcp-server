@@ -6,7 +6,20 @@ import type { Request, Response } from "express";
 import { DatabaseClient } from "../db/client.js";
 import { SpendeskClient } from "../spendesk-api/client.js";
 
-const dbClient = new DatabaseClient();
+// Lazy initialization of database client to avoid errors at module load time
+let dbClient: DatabaseClient | null = null;
+
+function getDbClient(): DatabaseClient {
+  if (!dbClient) {
+    try {
+      dbClient = new DatabaseClient();
+    } catch (err) {
+      console.error("Failed to initialize database client:", err);
+      throw err;
+    }
+  }
+  return dbClient;
+}
 
 /**
  * Validate Spendesk token by making a test API call.
@@ -231,7 +244,8 @@ export async function registerClient(req: Request, res: Response): Promise<void>
     }
 
     // Create client and get API key
-    const apiKey = dbClient.createClient(trimmedToken);
+    const client = getDbClient();
+    const apiKey = client.createClient(trimmedToken);
 
     res.json({
       success: true,

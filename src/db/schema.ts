@@ -24,12 +24,16 @@ export interface Client {
 function getEncryptionKey(): Buffer {
   const keyHex = process.env.ENCRYPTION_KEY;
   if (!keyHex) {
-    throw new Error(
+    const error = new Error(
       "ENCRYPTION_KEY environment variable is required. Generate one with: node scripts/generate-encryption-key.mjs"
     );
+    console.error("❌ ENCRYPTION_KEY missing:", error.message);
+    throw error;
   }
   if (keyHex.length !== 64) {
-    throw new Error("ENCRYPTION_KEY must be 64 hex characters (32 bytes)");
+    const error = new Error(`ENCRYPTION_KEY must be 64 hex characters (32 bytes), got ${keyHex.length}`);
+    console.error("❌ ENCRYPTION_KEY invalid:", error.message);
+    throw error;
   }
   return Buffer.from(keyHex, "hex");
 }
@@ -95,19 +99,27 @@ export function initDatabase(db: Database.Database): void {
  * Create a new database instance with schema initialized.
  */
 export function createDatabase(): Database.Database {
-  // Ensure the directory exists before creating the database
-  const dbDir = dirname(DB_PATH);
   try {
+    // Ensure the directory exists before creating the database
+    const dbDir = dirname(DB_PATH);
     mkdirSync(dbDir, { recursive: true });
+    console.log(`✓ Database directory created/verified: ${dbDir}`);
   } catch (err) {
     // Ignore error if directory already exists
     if (err && typeof err === "object" && "code" in err && err.code !== "EEXIST") {
+      console.error("❌ Failed to create database directory:", err);
       throw err;
     }
   }
   
-  const db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  initDatabase(db);
-  return db;
+  try {
+    const db = new Database(DB_PATH);
+    db.pragma("journal_mode = WAL");
+    initDatabase(db);
+    console.log(`✓ Database initialized: ${DB_PATH}`);
+    return db;
+  } catch (err) {
+    console.error("❌ Failed to initialize database:", err);
+    throw err;
+  }
 }
