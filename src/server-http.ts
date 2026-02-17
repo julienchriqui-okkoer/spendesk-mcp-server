@@ -89,12 +89,18 @@ app.get("/", (_req: Request, res: Response) => {
 
 // Explicit healthcheck endpoint for Railway
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).type("application/json").send(
-    JSON.stringify({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-    })
-  );
+  try {
+    res.status(200).type("application/json").send(
+      JSON.stringify({
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        port: PORT,
+      })
+    );
+  } catch (err) {
+    console.error("Healthcheck error:", err);
+    res.status(500).json({ status: "error", message: "Healthcheck failed" });
+  }
 });
 
 // UI Routes
@@ -174,8 +180,9 @@ app.delete("/mcp", async (req: Request, res: Response) => {
   res.status(204).send();
 });
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`✓ Spendesk MCP HTTP server listening on http://${HOST}:${PORT}`);
+  console.log(`✓ Healthcheck available at http://${HOST}:${PORT}/health`);
   console.log("  GET  /health — Health check endpoint");
   console.log("  GET  / — Server info");
   console.log("  POST /mcp — JSON-RPC (init and messages)");
@@ -197,12 +204,29 @@ const server = app.listen(PORT, () => {
   }
 });
 
+server.on("error", (err: Error) => {
+  console.error("❌ Server error:", err);
+  process.exit(1);
+});
+
 process.on("SIGINT", async () => {
   console.log("Shutting down...");
   await sessionStore.closeAll();
   server.close(() => process.exit(0));
 });
 process.on("SIGTERM", async () => {
+  console.log("SIGTERM received, shutting down...");
   await sessionStore.closeAll();
   server.close(() => process.exit(0));
+});
+
+// Handle uncaught errors
+process.on("uncaughtException", (err: Error) => {
+  console.error("❌ Uncaught Exception:", err);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason: unknown) => {
+  console.error("❌ Unhandled Rejection:", reason);
+  process.exit(1);
 });
