@@ -18,6 +18,17 @@ const listSchema = {
   filters: filtersSchema,
 };
 
+// Specific schema for settlements with dedicated parameters
+const settlementsSchema = {
+  ...paginationSchema,
+  type: z.string().optional().describe("Filter settlements by type"),
+  state: z.string().optional().describe("Filter settlements by state"),
+  paidFrom: z.string().optional().describe("Filter settlements paid from this date (ISO 8601 format)"),
+  exportedAfter: z.string().optional().describe("Filter settlements exported after this date (ISO 8601 format)"),
+  ids: z.union([z.string(), z.array(z.string())]).optional().describe("Filter by settlement ID(s). Can be a single ID string or array of IDs"),
+  filters: filtersSchema, // Keep filters for any additional parameters
+};
+
 function paginate(args: { page?: number; perPage?: number }): Record<string, string> {
   const p: Record<string, string> = {};
   if (args.page != null) p.page = String(args.page);
@@ -45,13 +56,65 @@ function buildQueryParams(args: {
   return params;
 }
 
+/**
+ * Build query params specifically for settlements with dedicated parameters.
+ */
+function buildSettlementsQueryParams(args: {
+  page?: number;
+  perPage?: number;
+  type?: string;
+  state?: string;
+  paidFrom?: string;
+  exportedAfter?: string;
+  ids?: string | string[];
+  filters?: Record<string, unknown>;
+}): Record<string, string> {
+  const params = paginate(args);
+  
+  // Add dedicated settlement parameters
+  if (args.type != null) params.type = String(args.type);
+  if (args.state != null) params.state = String(args.state);
+  if (args.paidFrom != null) params.paidFrom = String(args.paidFrom);
+  if (args.exportedAfter != null) params.exportedAfter = String(args.exportedAfter);
+  
+  // Handle ids parameter (can be string or array)
+  if (args.ids != null) {
+    if (Array.isArray(args.ids)) {
+      // If array, join with comma (common API pattern)
+      params.ids = args.ids.join(",");
+    } else {
+      params.ids = String(args.ids);
+    }
+  }
+  
+  // Add any additional filters
+  if (args.filters) {
+    for (const [key, value] of Object.entries(args.filters)) {
+      if (value != null && !params[key]) { // Don't override dedicated params
+        params[key] = String(value);
+      }
+    }
+  }
+  
+  return params;
+}
+
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   const run = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     switch (name) {
       case "spendesk_get_settlements":
         return api.get(
           SpendeskPaths.getSettlements,
-          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+          buildSettlementsQueryParams(args as {
+            page?: number;
+            perPage?: number;
+            type?: string;
+            state?: string;
+            paidFrom?: string;
+            exportedAfter?: string;
+            ids?: string | string[];
+            filters?: Record<string, unknown>;
+          })
         );
       case "spendesk_update_settlement_state":
         return api.put(SpendeskPaths.updateSettlementState(args.settlementId as string), { state: args.state });
@@ -160,8 +223,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting. Use 'filters' to pass any API query parameters (dates, statuses, IDs, etc.).",
-    listSchema,
+    "Get settlements list. Useful for ERP sync and reporting. Supports dedicated parameters (type, state, paidFrom, exportedAfter, ids) and 'filters' for any additional API query parameters.",
+    settlementsSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
   mcp.tool(
