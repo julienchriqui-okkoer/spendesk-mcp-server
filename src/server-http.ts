@@ -88,18 +88,21 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 // Explicit healthcheck endpoint for Railway
-app.get("/health", (_req: Request, res: Response) => {
+app.get("/health", (req: Request, res: Response) => {
   try {
-    res.status(200).type("application/json").send(
-      JSON.stringify({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        port: PORT,
-      })
-    );
+    console.log(`[Healthcheck] Request from ${req.ip || req.socket.remoteAddress}`);
+    const response = {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      port: PORT,
+      host: HOST,
+      uptime: process.uptime(),
+    };
+    console.log(`[Healthcheck] Sending response:`, response);
+    res.status(200).type("application/json").send(JSON.stringify(response));
   } catch (err) {
-    console.error("Healthcheck error:", err);
-    res.status(500).json({ status: "error", message: "Healthcheck failed" });
+    console.error("[Healthcheck] Error:", err);
+    res.status(500).json({ status: "error", message: "Healthcheck failed", error: err instanceof Error ? err.message : String(err) });
   }
 });
 
@@ -181,8 +184,14 @@ app.delete("/mcp", async (req: Request, res: Response) => {
 });
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`✓ Spendesk MCP HTTP server listening on http://${HOST}:${PORT}`);
-  console.log(`✓ Healthcheck available at http://${HOST}:${PORT}/health`);
+  const address = server.address();
+  const actualPort = typeof address === "object" && address ? address.port : PORT;
+  const actualAddress = typeof address === "object" && address ? address.address : HOST;
+  
+  console.log(`✓ Spendesk MCP HTTP server listening on http://${actualAddress}:${actualPort}`);
+  console.log(`✓ Healthcheck available at http://${actualAddress}:${actualPort}/health`);
+  console.log(`✓ Process PID: ${process.pid}`);
+  console.log(`✓ Node version: ${process.version}`);
   console.log("  GET  /health — Health check endpoint");
   console.log("  GET  / — Server info");
   console.log("  POST /mcp — JSON-RPC (init and messages)");
@@ -202,6 +211,22 @@ const server = app.listen(PORT, HOST, () => {
   } else {
     console.warn("⚠ SPENDESK_API_TOKEN not set - clients must register via /ui");
   }
+  
+  // Test healthcheck immediately after startup
+  setTimeout(() => {
+    console.log(`[Startup] Testing healthcheck endpoint...`);
+    fetch(`http://localhost:${actualPort}/health`)
+      .then((res) => {
+        console.log(`[Startup] Healthcheck test: ${res.status} ${res.statusText}`);
+        return res.text();
+      })
+      .then((text) => {
+        console.log(`[Startup] Healthcheck response: ${text.substring(0, 100)}`);
+      })
+      .catch((err) => {
+        console.error(`[Startup] Healthcheck test failed:`, err);
+      });
+  }, 1000);
 });
 
 server.on("error", (err: Error) => {
