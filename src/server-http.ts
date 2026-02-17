@@ -47,7 +47,29 @@ const allowedHostsList = allowedHostsRaw
   : undefined;
 const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 
+// Create Express app with MCP support
+// Note: createMcpExpressApp adds middleware that might block healthcheck
+// We'll register routes before the MCP middleware takes effect
 const app = createMcpExpressApp({ host: HOST, ...(allowedHosts && { allowedHosts }) });
+
+// Register healthcheck FIRST, before any MCP middleware that might block it
+app.get("/health", (req: Request, res: Response) => {
+  try {
+    console.log(`[Healthcheck] Request from ${req.ip || req.socket.remoteAddress}`);
+    const response = {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      port: PORT,
+      host: HOST,
+      uptime: process.uptime(),
+    };
+    console.log(`[Healthcheck] Sending response:`, response);
+    res.status(200).type("application/json").send(JSON.stringify(response));
+  } catch (err) {
+    console.error("[Healthcheck] Error:", err);
+    res.status(500).json({ status: "error", message: "Healthcheck failed", error: err instanceof Error ? err.message : String(err) });
+  }
+});
 
 // JSON body parser for UI routes
 app.use((req: Request, res: Response, next) => {
@@ -87,24 +109,6 @@ app.get("/", (_req: Request, res: Response) => {
   );
 });
 
-// Explicit healthcheck endpoint for Railway
-app.get("/health", (req: Request, res: Response) => {
-  try {
-    console.log(`[Healthcheck] Request from ${req.ip || req.socket.remoteAddress}`);
-    const response = {
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      port: PORT,
-      host: HOST,
-      uptime: process.uptime(),
-    };
-    console.log(`[Healthcheck] Sending response:`, response);
-    res.status(200).type("application/json").send(JSON.stringify(response));
-  } catch (err) {
-    console.error("[Healthcheck] Error:", err);
-    res.status(500).json({ status: "error", message: "Healthcheck failed", error: err instanceof Error ? err.message : String(err) });
-  }
-});
 
 // UI Routes
 app.get("/ui", getRegisterForm);
@@ -212,21 +216,6 @@ const server = app.listen(PORT, HOST, () => {
     console.warn("⚠ SPENDESK_API_TOKEN not set - clients must register via /ui");
   }
   
-  // Test healthcheck immediately after startup
-  setTimeout(() => {
-    console.log(`[Startup] Testing healthcheck endpoint...`);
-    fetch(`http://localhost:${actualPort}/health`)
-      .then((res) => {
-        console.log(`[Startup] Healthcheck test: ${res.status} ${res.statusText}`);
-        return res.text();
-      })
-      .then((text) => {
-        console.log(`[Startup] Healthcheck response: ${text.substring(0, 100)}`);
-      })
-      .catch((err) => {
-        console.error(`[Startup] Healthcheck test failed:`, err);
-      });
-  }, 1000);
 });
 
 server.on("error", (err: Error) => {
