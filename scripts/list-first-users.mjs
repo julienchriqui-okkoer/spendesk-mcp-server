@@ -57,7 +57,7 @@ function extractUsers(res) {
 }
 
 function rowCells(u) {
-  const name = u.name ?? u.display_name ?? u.first_name + " " + (u.last_name ?? "") ?? "-";
+  const name = (u.name ?? u.display_name ?? ((u.firstName || "") + " " + (u.lastName || "")).trim()) || "-";
   const email = u.email ?? "-";
   const id = u.id ?? "-";
   return {
@@ -117,7 +117,8 @@ async function main() {
     process.exit(1);
   }
 
-  const users = extractUsers(listRes);
+  let users = extractUsers(listRes);
+  users = users.slice(0, 5);
 
   console.log("--- 5 premiers users ---\n");
   if (users.length === 0) {

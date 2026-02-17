@@ -8,6 +8,16 @@ const paginationSchema = {
   perPage: z.number().int().min(1).max(100).optional().describe("Items per page"),
 };
 
+const filtersSchema = z
+  .record(z.union([z.string(), z.number(), z.boolean()]))
+  .optional()
+  .describe("Additional API query parameters (dates, statuses, IDs, etc.)");
+
+const listSchema = {
+  ...paginationSchema,
+  filters: filtersSchema,
+};
+
 function paginate(args: { page?: number; perPage?: number }): Record<string, string> {
   const p: Record<string, string> = {};
   if (args.page != null) p.page = String(args.page);
@@ -15,17 +25,46 @@ function paginate(args: { page?: number; perPage?: number }): Record<string, str
   return p;
 }
 
+/**
+ * Build query params from pagination + optional filters.
+ * Filters can contain any API query parameters (dates, statuses, IDs, etc.).
+ */
+function buildQueryParams(args: {
+  page?: number;
+  perPage?: number;
+  filters?: Record<string, unknown>;
+}): Record<string, string> {
+  const params = paginate(args);
+  if (args.filters) {
+    for (const [key, value] of Object.entries(args.filters)) {
+      if (value != null) {
+        params[key] = String(value);
+      }
+    }
+  }
+  return params;
+}
+
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   const run = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     switch (name) {
       case "spendesk_get_settlements":
-        return api.get(SpendeskPaths.getSettlements, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getSettlements,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_update_settlement_state":
         return api.put(SpendeskPaths.updateSettlementState(args.settlementId as string), { state: args.state });
       case "spendesk_get_bank_fees":
-        return api.get(SpendeskPaths.getBankFees, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getBankFees,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_payables":
-        return api.get(SpendeskPaths.getPayables, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getPayables,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_create_payables_snapshot":
         return api.post(SpendeskPaths.createPayablesSnapshot, args.payload);
       case "spendesk_get_payables_snapshot":
@@ -37,18 +76,30 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_update_payable_bookkeeping":
         return api.put(SpendeskPaths.updatePayableBookkeeping(args.payableId as string), args.payload);
       case "spendesk_get_wallet_loads":
-        return api.get(SpendeskPaths.getWalletLoads, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getWalletLoads,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_wallet_summary":
         return api.get(SpendeskPaths.getWalletSummary);
 
       case "spendesk_get_analytical_fields":
         return api.get(SpendeskPaths.getAnalyticalFields);
       case "spendesk_get_analytical_values":
-        return api.get(SpendeskPaths.getAnalyticalValuesByFieldId(args.fieldId as string));
+        return api.get(
+          SpendeskPaths.getAnalyticalValuesByFieldId(args.fieldId as string),
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_cost_centers":
-        return api.get(SpendeskPaths.getCostCenters, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getCostCenters,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_expense_categories":
-        return api.get(SpendeskPaths.getExpenseCategories, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getExpenseCategories,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_create_cost_center":
         return api.post(SpendeskPaths.createCostCenter, args.payload);
       case "spendesk_update_cost_center":
@@ -64,11 +115,17 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.get(SpendeskPaths.getJournalTemplates);
 
       case "spendesk_get_suppliers":
-        return api.get(SpendeskPaths.getSuppliers, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getSuppliers,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_supplier":
         return api.get(SpendeskPaths.getSupplierById(args.supplierId as string));
       case "spendesk_get_users":
-        return api.get(SpendeskPaths.getUsers, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getUsers,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_user":
         return api.get(SpendeskPaths.getUserById(args.userId as string));
 
@@ -84,7 +141,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.delete(SpendeskPaths.deleteWebhook(args.webhookId as string));
 
       case "spendesk_get_purchase_orders":
-        return api.get(SpendeskPaths.getPurchaseOrders, paginate(args as { page?: number; perPage?: number }));
+        return api.get(
+          SpendeskPaths.getPurchaseOrders,
+          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
 
@@ -100,8 +160,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting.",
-    paginationSchema,
+    "Get settlements list. Useful for ERP sync and reporting. Use 'filters' to pass any API query parameters (dates, statuses, IDs, etc.).",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
   mcp.tool(
@@ -115,14 +175,14 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   );
   mcp.tool(
     "spendesk_get_bank_fees",
-    "Get bank fees. Useful for accounting and dashboards.",
-    paginationSchema,
+    "Get bank fees. Useful for accounting and dashboards. Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_bank_fees", args))
   );
   mcp.tool(
     "spendesk_get_payables",
-    "List payables (invoices, credit notes) with pagination. Use when GET /v1/payables is available.",
-    paginationSchema,
+    "List payables (invoices, credit notes) with pagination. Use when GET /v1/payables is available. Use 'filters' to pass any API query parameters (dates, statuses, supplier IDs, etc.).",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_payables", args))
   );
   mcp.tool(
@@ -160,8 +220,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   );
   mcp.tool(
     "spendesk_get_wallet_loads",
-    "Get wallet loads (card top-ups, etc.).",
-    paginationSchema,
+    "Get wallet loads (card top-ups, etc.). Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_wallet_loads", args))
   );
   mcp.tool("spendesk_get_wallet_summary", "Get wallet summary for dashboards.", {}, async () =>
@@ -174,23 +234,23 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   );
   mcp.tool(
     "spendesk_get_analytical_values",
-    "Get analytical values for a given field. Call spendesk_get_analytical_fields first to get field ids.",
+    "Get analytical values for a given field. Call spendesk_get_analytical_fields first to get field ids. Use 'filters' to pass any API query parameters.",
     {
       fieldId: z.string().describe("Analytical field id (from spendesk_get_analytical_fields)"),
-      ...paginationSchema,
+      ...listSchema,
     },
     async (args) => toContent(await run("spendesk_get_analytical_values", args))
   );
   mcp.tool(
     "spendesk_get_cost_centers",
-    "Get cost centers (for ERP mapping and reports).",
-    paginationSchema,
+    "Get cost centers (for ERP mapping and reports). Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_cost_centers", args))
   );
   mcp.tool(
     "spendesk_get_expense_categories",
-    "Get expense categories.",
-    paginationSchema,
+    "Get expense categories. Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_expense_categories", args))
   );
   mcp.tool(
@@ -235,8 +295,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Suppliers & Users ————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_suppliers",
-    "Get suppliers list (vendors). Essential for ERP sync.",
-    paginationSchema,
+    "Get suppliers list (vendors). Essential for ERP sync. Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_suppliers", args))
   );
   mcp.tool(
@@ -247,8 +307,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   );
   mcp.tool(
     "spendesk_get_users",
-    "Get users list (for approvals, dashboards).",
-    paginationSchema,
+    "Get users list (for approvals, dashboards). Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_users", args))
   );
   mcp.tool(
@@ -293,8 +353,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders —————————————————————————————————————————————————──────
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders list.",
-    paginationSchema,
+    "Get purchase orders list. Use 'filters' to pass any API query parameters.",
+    listSchema,
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );
   mcp.tool(
