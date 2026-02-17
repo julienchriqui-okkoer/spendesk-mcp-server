@@ -85,18 +85,36 @@ app.get("/health", (req: Request, res: Response) => {
 });
 
 // JSON body parser for UI routes
-// Parse JSON body for POST requests to /ui routes
+// Note: createMcpExpressApp might already parse JSON, so we check if body exists first
 app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path.startsWith("/ui") && req.method === "POST" && req.get("content-type")?.includes("application/json")) {
+  // Skip if body already parsed or not a POST to /ui
+  if (!req.path.startsWith("/ui") || req.method !== "POST") {
+    return next();
+  }
+  
+  // If body is already parsed (by createMcpExpressApp), use it
+  if (req.body && typeof req.body === "object" && Object.keys(req.body).length > 0) {
+    console.log("[BodyParser] Body already parsed:", Object.keys(req.body));
+    return next();
+  }
+  
+  // Otherwise, parse manually
+  if (req.get("content-type")?.includes("application/json")) {
+    console.log("[BodyParser] Parsing body manually for", req.path);
     const chunks: Buffer[] = [];
+    let bodyRead = false;
+    
     req.on("data", (chunk: Buffer) => {
       chunks.push(chunk);
     });
+    
     req.on("end", () => {
+      if (bodyRead) return;
+      bodyRead = true;
       try {
         const data = Buffer.concat(chunks).toString("utf8");
         req.body = data ? JSON.parse(data) : {};
-        console.log("[BodyParser] Parsed body for", req.path, ":", Object.keys(req.body || {}));
+        console.log("[BodyParser] Manually parsed body:", Object.keys(req.body || {}));
         next();
       } catch (err) {
         console.error("[BodyParser] Parse error:", err);
@@ -104,11 +122,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
         next();
       }
     });
+    
     req.on("error", (err) => {
+      if (bodyRead) return;
+      bodyRead = true;
       console.error("[BodyParser] Stream error:", err);
       req.body = {};
       next();
     });
+    
+    // If stream is already ended (body already consumed), parse empty body
+    if (req.readableEnded) {
+      req.body = {};
+      next();
+    }
   } else {
     next();
   }
