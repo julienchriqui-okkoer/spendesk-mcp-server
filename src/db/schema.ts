@@ -5,6 +5,8 @@
 
 import Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 const DB_PATH = process.env.DB_PATH || "./data/clients.db";
 
@@ -93,6 +95,17 @@ export function initDatabase(db: Database.Database): void {
  * Create a new database instance with schema initialized.
  */
 export function createDatabase(): Database.Database {
+  // Ensure the directory exists before creating the database
+  const dbDir = dirname(DB_PATH);
+  try {
+    mkdirSync(dbDir, { recursive: true });
+  } catch (err) {
+    // Ignore error if directory already exists
+    if (err && typeof err === "object" && "code" in err && err.code !== "EEXIST") {
+      throw err;
+    }
+  }
+  
   const db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   initDatabase(db);
