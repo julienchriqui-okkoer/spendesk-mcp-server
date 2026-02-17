@@ -4,6 +4,12 @@ node_modules/
 # Build
 dist/
 
+# Database
+data/
+*.db
+*.db-shm
+*.db-wal
+
 # Environment (ne jamais commiter les tokens)
 .env
 .env.local

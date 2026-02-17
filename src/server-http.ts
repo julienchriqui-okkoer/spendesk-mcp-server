@@ -13,21 +13,25 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { SpendeskClient } from "./spendesk-api/client.js";
 import { createMcpServer } from "./lib/create-server.js";
+import { authenticateClient } from "./middleware/auth.js";
+import { SessionStore } from "./lib/session-store.js";
+import { getRegisterForm, registerClient, getSuccessPage } from "./routes/ui.js";
 
-function getApiToken(): string {
-  const token = process.env.SPENDESK_API_TOKEN;
-  if (!token) {
-    console.error("SPENDESK_API_TOKEN is required. Set it in your environment or .env.");
-    process.exit(1);
-  }
-  return token;
+function getApiToken(): string | null {
+  return process.env.SPENDESK_API_TOKEN || null;
 }
 
-// Session store: sessionId -> transport (for GET SSE and subsequent POSTs)
-const transports: Record<string, StreamableHTTPServerTransport> = {};
+// Extended session store with client token support
+const sessionStore = new SessionStore();
 
-function buildApi(): SpendeskClient {
-  const apiToken = getApiToken();
+function buildApi(clientToken?: string): SpendeskClient {
+  // Use client token if provided, otherwise fallback to env var
+  const apiToken = clientToken || getApiToken();
+  if (!apiToken) {
+    throw new Error(
+      "No Spendesk API token available. Either provide X-Client-Token header or set SPENDESK_API_TOKEN environment variable."
+    );
+  }
   const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
   const baseUrl = process.env.SPENDESK_BASE_URL;
   return new SpendeskClient({ apiToken, useDemo, baseUrl });
@@ -45,20 +49,54 @@ const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 
 const app = createMcpExpressApp({ host: HOST, ...(allowedHosts && { allowedHosts }) });
 
+// JSON body parser for UI routes
+app.use((req: Request, res: Response, next) => {
+  if (req.path.startsWith("/ui") && req.method === "POST") {
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      data += chunk;
+    });
+    req.on("end", () => {
+      try {
+        req.body = data ? JSON.parse(data) : {};
+      } catch {
+        req.body = {};
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+});
+
 app.get("/", (_req: Request, res: Response) => {
   res.type("application/json").send(
     JSON.stringify({
       name: "spendesk-mcp-server",
       mcp: "/mcp",
-      endpoints: { post: "POST /mcp (JSON-RPC)", get: "GET /mcp (SSE, send mcp-session-id)", delete: "DELETE /mcp (close session)" },
+      ui: "/ui",
+      endpoints: {
+        post: "POST /mcp (JSON-RPC)",
+        get: "GET /mcp (SSE, send mcp-session-id)",
+        delete: "DELETE /mcp (close session)",
+        ui: "GET /ui (Client registration portal)",
+      },
     })
   );
 });
 
-app.post("/mcp", async (req: Request, res: Response) => {
+// UI Routes
+app.get("/ui", getRegisterForm);
+app.post("/ui/register", registerClient);
+app.get("/ui/success", getSuccessPage);
+
+// Apply authentication middleware to MCP routes
+app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
   try {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    let transport: StreamableHTTPServerTransport | undefined = sessionId ? transports[sessionId] : undefined;
+    const sessionInfo = sessionId ? sessionStore.get(sessionId) : undefined;
+    let transport: StreamableHTTPServerTransport | undefined = sessionInfo?.transport;
 
     if (transport) {
       await transport.handleRequest(req, res, req.body);
@@ -66,13 +104,19 @@ app.post("/mcp", async (req: Request, res: Response) => {
     }
 
     if (!sessionId && isInitializeRequest(req.body)) {
+      // Get client token from request (set by middleware) or use env fallback
+      const clientToken = req.clientToken;
+      
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          if (transport) transports[id] = transport;
+          if (transport) {
+            sessionStore.set(id, transport, clientToken, req.clientApiKey);
+          }
         },
       });
-      const api = buildApi();
+      
+      const api = buildApi(clientToken);
       const mcp = createMcpServer(api);
       await mcp.connect(transport);
       await transport.handleRequest(req, res, req.body);
@@ -87,9 +131,10 @@ app.post("/mcp", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("MCP request error:", err);
     if (!res.headersSent) {
+      const errorMessage = err instanceof Error ? err.message : "Internal server error";
       res.status(500).json({
         jsonrpc: "2.0",
-        error: { code: -32603, message: "Internal server error" },
+        error: { code: -32603, message: errorMessage },
         id: null,
       });
     }
@@ -98,19 +143,22 @@ app.post("/mcp", async (req: Request, res: Response) => {
 
 app.get("/mcp", async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
-  if (!sessionId || !transports[sessionId]) {
+  const sessionInfo = sessionId ? sessionStore.get(sessionId) : undefined;
+  if (!sessionId || !sessionInfo) {
     res.status(400).send("Invalid or missing session ID");
     return;
   }
-  const transport = transports[sessionId];
-  await transport.handleRequest(req, res);
+  await sessionInfo.transport.handleRequest(req, res);
 });
 
 app.delete("/mcp", async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
-  if (sessionId && transports[sessionId]) {
-    await transports[sessionId].close();
-    delete transports[sessionId];
+  if (sessionId) {
+    const sessionInfo = sessionStore.get(sessionId);
+    if (sessionInfo) {
+      await sessionInfo.transport.close();
+      sessionStore.delete(sessionId);
+    }
   }
   res.status(204).send();
 });
@@ -120,20 +168,15 @@ const server = app.listen(PORT, () => {
   console.log("  POST /mcp — JSON-RPC (init and messages)");
   console.log("  GET  /mcp — SSE stream (send mcp-session-id header)");
   console.log("  DELETE /mcp — close session (send mcp-session-id header)");
+  console.log("  GET  /ui — Client registration portal");
 });
 
 process.on("SIGINT", async () => {
   console.log("Shutting down...");
-  for (const id of Object.keys(transports)) {
-    await transports[id].close();
-    delete transports[id];
-  }
+  await sessionStore.closeAll();
   server.close(() => process.exit(0));
 });
 process.on("SIGTERM", async () => {
-  for (const id of Object.keys(transports)) {
-    await transports[id].close();
-    delete transports[id];
-  }
+  await sessionStore.closeAll();
   server.close(() => process.exit(0));
 });
