@@ -33,26 +33,51 @@ function getDbClient(): DatabaseClient {
 }
 
 /**
- * Middleware to authenticate client via X-Client-Token header.
- * Optional X-Company-Id selects which company's token to use (multi-company).
- * If header is present, resolves Spendesk token from database.
+ * Resolve API key and optional company ID from request.
+ * Supports:
+ * - Authorization: Bearer <apiKey> or Bearer <apiKey>:<companyKey> (for Dust and clients that only send Bearer)
+ * - X-Client-Token + optional X-Company-Id
+ */
+function getAuthFromRequest(req: Request): { apiKey: string; companyId?: string } | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    if (!token) return null;
+    const colon = token.indexOf(":");
+    if (colon > 0) {
+      return { apiKey: token.slice(0, colon), companyId: token.slice(colon + 1).trim() || undefined };
+    }
+    return { apiKey: token, companyId: undefined };
+  }
+  const apiKey = req.headers["x-client-token"] as string | undefined;
+  if (!apiKey?.trim()) return null;
+  const companyId = req.headers["x-company-id"] as string | undefined;
+  return {
+    apiKey: apiKey.trim(),
+    companyId: companyId != null && companyId.trim() !== "" ? companyId.trim() : undefined,
+  };
+}
+
+/**
+ * Middleware to authenticate client via X-Client-Token or Authorization Bearer.
+ * Optional company: X-Company-Id header or Bearer "apiKey:companyKey" (for Dust multi-company).
+ * If credentials present, resolves Spendesk token from database.
  * If not present, request continues (fallback to env var token).
  */
 export function authenticateClient(req: Request, res: Response, next: NextFunction): void {
-  const apiKey = req.headers["x-client-token"] as string | undefined;
-  const companyId = req.headers["x-company-id"] as string | undefined;
+  const auth = getAuthFromRequest(req);
 
-  if (!apiKey) {
-    // No client token provided, continue without it (will use env var fallback)
+  if (!auth) {
     return next();
   }
 
+  const { apiKey, companyId } = auth;
+
   try {
     const client = getDbClient();
-    const spendeskToken =
-      companyId != null && companyId.trim() !== ""
-        ? client.getCompanyToken(apiKey, companyId.trim())
-        : client.getClientToken(apiKey);
+    const spendeskToken = companyId
+      ? client.getCompanyToken(apiKey, companyId)
+      : client.getClientToken(apiKey);
 
     if (!spendeskToken) {
       res.status(401).json({
@@ -70,9 +95,7 @@ export function authenticateClient(req: Request, res: Response, next: NextFuncti
 
     req.clientToken = spendeskToken;
     req.clientApiKey = apiKey;
-    if (companyId != null && companyId.trim() !== "") {
-      req.companyId = companyId.trim();
-    }
+    if (companyId) req.companyId = companyId;
     next();
   } catch (err) {
     console.error("Authentication error:", err);

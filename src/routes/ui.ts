@@ -11,6 +11,38 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+/** Shared navigation: Enregistrement, Documentation. */
+function navHtml(current: "register" | "docs" | "success" | "companies"): string {
+  const base = "/ui";
+  return `
+  <nav class="ui-nav">
+    <a href="${base}" class="ui-nav-link${current === "register" ? " active" : ""}">Enregistrement</a>
+    <a href="${base}/docs" class="ui-nav-link${current === "docs" ? " active" : ""}">Documentation</a>
+  </nav>`;
+}
+
+/** Shared styles for nav (include once per page). */
+const navStyles = `
+  .ui-nav {
+    background: rgba(255,255,255,0.95);
+    padding: 12px 24px;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .ui-nav-link {
+    color: #555;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 15px;
+  }
+  .ui-nav-link:hover { color: #667eea; }
+  .ui-nav-link.active { color: #667eea; }
+`;
+
 import { DatabaseClient } from "../db/client.js";
 import { SpendeskClient } from "../spendesk-api/client.js";
 
@@ -160,9 +192,11 @@ export function getRegisterForm(_req: Request, res: Response): void {
       display: block;
       margin-bottom: 4px;
     }
+    ${navStyles}
   </style>
 </head>
 <body>
+  ${navHtml("register")}
   <div class="container">
     <h1>🔐 Enregistrement</h1>
     <p class="subtitle">Enregistrez votre token Spendesk pour accéder au MCP</p>
@@ -198,7 +232,8 @@ export function getRegisterForm(_req: Request, res: Response): void {
     <div class="info">
       <strong>ℹ️ Comment obtenir votre token ?</strong>
       Dans Spendesk : Paramètres > Intégrations > Gestion d'accès API<br>
-      (Compte Premium/Enterprise, statut Account Owner requis)
+      (Compte Premium/Enterprise, statut Account Owner requis)<br>
+      <a href="/ui/docs" style="margin-top: 8px; display: inline-block;">Voir la documentation pour configurer votre MCP</a>
     </div>
   </div>
   
@@ -263,6 +298,133 @@ export function getRegisterForm(_req: Request, res: Response): void {
         submitBtn.textContent = 'Enregistrer';
       }
     });
+  </script>
+</body>
+</html>
+  `);
+}
+
+/**
+ * GET /ui/docs - Documentation and setup guide.
+ */
+export function getDocsPage(_req: Request, res: Response): void {
+  const baseUrl = "https://votre-domaine.railway.app"; // Client can replace with window.location.origin in browser
+  res.type("text/html").send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation - Spendesk MCP Server</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px;
+    }
+    h1 { color: #333; margin-bottom: 8px; font-size: 26px; }
+    h2 { color: #444; margin: 28px 0 12px; font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+    p { color: #555; line-height: 1.65; margin-bottom: 12px; font-size: 14px; }
+    ul { margin: 8px 0 16px 20px; color: #555; line-height: 1.7; font-size: 14px; }
+    code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 12px 0 20px;
+    }
+    pre code { background: none; padding: 0; }
+    .step { margin-bottom: 20px; }
+    .step strong { color: #333; }
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ${navStyles}
+  </style>
+</head>
+<body>
+  ${navHtml("docs")}
+  <div class="container">
+    <h1>Documentation</h1>
+    <p>Guide pour configurer et utiliser le MCP Spendesk (Model Context Protocol).</p>
+
+    <h2>Présentation</h2>
+    <p>Ce serveur expose l’API Spendesk sous forme d’outils MCP. Il permet à des clients (Cursor, Dust, ChatGPT, etc.) d’interroger vos données Spendesk (settlements, payables, fournisseurs, utilisateurs, etc.) via un protocole standard.</p>
+
+    <h2>Prérequis</h2>
+    <ul>
+      <li>Un token d’accès API Spendesk (Bearer).</li>
+      <li>Création des identifiants : Spendesk → Paramètres → Intégrations → Gestion d’accès API (compte Premium/Enterprise, statut Account Owner).</li>
+    </ul>
+
+    <h2>Étapes de configuration</h2>
+
+    <div class="step">
+      <strong>1. S’enregistrer</strong><br>
+      Sur cette interface, allez sur <a href="/ui">Enregistrement</a>, saisissez un nom de company (ex. Spendesk FR) et votre token Spendesk. Après validation, vous recevrez une <strong>clé API</strong> unique.
+    </div>
+    <div class="step">
+      <strong>2. Conserver la clé API</strong><br>
+      La clé s’affiche sur la page de succès. Elle sert à authentifier toutes vos requêtes MCP (header <code>X-Client-Token</code> ou <code>Authorization: Bearer &lt;clé&gt;</code>). Conservez-la en lieu sûr.
+    </div>
+    <div class="step">
+      <strong>3. URL du MCP</strong><br>
+      L’URL de base du MCP est : <code>/mcp</code> sur ce même domaine. Exemple : <code id="mcpUrl">${baseUrl}/mcp</code>
+    </div>
+    <div class="step">
+      <strong>4. Headers d’authentification</strong><br>
+      À chaque requête vers <code>POST /mcp</code> ou <code>GET /mcp</code>, envoyez l’un des deux formats suivants :
+      <ul>
+        <li><code>X-Client-Token: &lt;votre-clé-api&gt;</code></li>
+        <li>ou <code>Authorization: Bearer &lt;votre-clé-api&gt;</code> (utilisé par Dust)</li>
+      </ul>
+      Pour cibler une company précise (multi-company), ajoutez <code>X-Company-Id: &lt;company_key&gt;</code> ou utilisez le Bearer au format <code>clé-api:company_key</code> (ex. <code>clé:spendesk-fr</code>).
+    </div>
+    <div class="step">
+      <strong>5. Configurer Dust</strong><br>
+      Dans Dust : Spaces → Tools → Add MCP Server. URL = <code>/mcp</code> de ce serveur. Authentification = Bearer token. Token = votre clé API (ou <code>clé:spendesk-fr</code> pour une company). Pour plusieurs companies, ajoutez plusieurs MCP servers (même URL, Bearer différent par company).
+    </div>
+    <div class="step">
+      <strong>6. Multi-company</strong><br>
+      Depuis la page de succès, cliquez sur « Gérer mes companies » pour ajouter d’autres companies (ex. Spendesk UK) avec leur token. Chaque company a une <code>company_key</code> à utiliser dans <code>X-Company-Id</code> ou dans le Bearer (<code>clé:company_key</code>).
+    </div>
+
+    <h2>Exemple avec curl</h2>
+    <p>Initialiser une session MCP puis lister les outils :</p>
+    <pre><code>curl -X POST <span id="curlOrigin">${baseUrl}</span>/mcp \\
+  -H "Content-Type: application/json" \\
+  -H "X-Client-Token: &lt;votre-clé-api&gt;" \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}'</code></pre>
+    <p>La réponse contient un header <code>mcp-session-id</code> à renvoyer pour les requêtes suivantes.</p>
+
+    <p style="margin-top: 24px;"><a href="/ui">→ Aller à l’enregistrement</a></p>
+  </div>
+  <script>
+    (function() {
+      var o = window.location.origin;
+      var mcp = document.getElementById('mcpUrl');
+      var curl = document.getElementById('curlOrigin');
+      if (mcp) mcp.textContent = o + '/mcp';
+      if (curl) curl.textContent = o;
+    })();
   </script>
 </body>
 </html>
@@ -489,9 +651,11 @@ export function getSuccessPage(req: Request, res: Response): void {
       display: block;
       margin-bottom: 4px;
     }
+    ${navStyles}
   </style>
 </head>
 <body>
+  ${navHtml("success")}
   <div class="container">
     <h1>
       <span class="success-icon">✅</span>
@@ -601,9 +765,11 @@ export function getCompaniesPage(req: Request, res: Response): void {
     .error.show { display: block; }
     .back { margin-top: 24px; }
     .back a { color: #667eea; text-decoration: none; }
+    ${navStyles}
   </style>
 </head>
 <body>
+  ${navHtml("companies")}
   <div class="container">
     <h1>Mes companies</h1>
     <p class="subtitle">Ajoutez une company Spendesk (ex. Spendesk UK) pour utiliser plusieurs tokens avec le même compte MCP.</p>

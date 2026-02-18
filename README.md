@@ -169,10 +169,11 @@ Un même client peut avoir **plusieurs companies** (chacune avec son propre toke
    - **`X-Company-Id`** (optionnel) : la **company_key** de la company à interroger (ex. `spendesk-fr`, `spendesk-uk`). Si absent, le serveur utilise la première company ou le token legacy du client.
 
 3. **Exemple avec deux companies (Dust, dashboard consolidé)** :
-   - Configurer le MCP avec une seule URL et `X-Client-Token: <clé-api>`.
-   - Pour les données FR : envoyer les requêtes MCP avec `X-Company-Id: spendesk-fr`.
-   - Pour les données UK : envoyer les requêtes MCP avec `X-Company-Id: spendesk-uk`.
-   - Agréger les résultats côté Dust (ou autre client) pour afficher un spend consolidé.
+   - **Dans Dust** : Dust n’envoie que le header `Authorization: Bearer <token>`. Le serveur accepte ce format. Pour avoir **plusieurs companies** dans Dust, ajoutez **plusieurs MCP servers** (même URL, Bearer différent) :
+     - MCP 1 : URL = `https://votre-domaine.railway.app/mcp`, **Bearer** = `votre-clé-api:spendesk-fr`
+     - MCP 2 : URL = `https://votre-domaine.railway.app/mcp`, **Bearer** = `votre-clé-api:spendesk-uk`
+   - Chaque “serveur” expose les mêmes tools mais ciblent une company différente ; les agents Dust peuvent appeler l’un ou l’autre pour agréger les données (ex. dashboard consolidé).
+   - Sans `:company_key`, le Bearer = seule la clé API utilise la company par défaut (première enregistrée).
 
 #### Sécurité
 
@@ -219,6 +220,7 @@ Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Res
 1. **Server URL** : `https://votre-domaine.com/mcp` (URL publique de votre déploiement + `/mcp`).
 2. **Authorization** : 
    - **Mode multi-tenant** : Ajouter le header `X-Client-Token: <clé-api>` à toutes les requêtes (si le client MCP le supporte). Pour cibler une company (multi-company), ajouter aussi `X-Company-Id: <company_key>` (ex. `spendesk-fr`, `spendesk-uk`).
+   - **Dust** : Dust n'envoie que `Authorization: Bearer <token>`. Le serveur accepte ce format. Utilisez **Bearer token** = votre clé API. Pour une company précise, utilisez **Bearer** = `clé-api:company_key` (ex. `b6195ab9-ea5e-486e-80cd-31821c42eaa0:spendesk-fr`). Pour récupérer des données de **plusieurs companies** dans Dust, ajoutez **plusieurs MCP servers** avec la même URL et un Bearer différent par company (ex. un avec `clé:spendesk-fr`, un avec `clé:spendesk-uk`).
    - **Mode fallback** : Le token Spendesk est dans `SPENDESK_API_TOKEN` côté serveur (pas d'auth HTTP requise).
    - Pour protéger l'accès, mettre un reverse proxy (auth, API key) devant `/mcp`.
 

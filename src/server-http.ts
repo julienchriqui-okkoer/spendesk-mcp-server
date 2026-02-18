@@ -15,7 +15,7 @@ import { SpendeskClient } from "./spendesk-api/client.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
-import { getRegisterForm, registerClient, getSuccessPage, getCompaniesPage, addCompany } from "./routes/ui.js";
+import { getRegisterForm, registerClient, getSuccessPage, getCompaniesPage, addCompany, getDocsPage } from "./routes/ui.js";
 
 function getApiToken(): string | null {
   return process.env.SPENDESK_API_TOKEN || null;
@@ -161,6 +161,7 @@ app.get("/", (_req: Request, res: Response) => {
 
 // UI Routes - Register BEFORE MCP routes to ensure they're not intercepted
 app.get("/ui", getRegisterForm);
+app.get("/ui/docs", getDocsPage);
 app.post("/ui/register", async (req: Request, res: Response) => {
   console.log("[UI Register] Route handler called");
   console.log("[UI Register] Method:", req.method);
