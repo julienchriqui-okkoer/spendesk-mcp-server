@@ -306,9 +306,14 @@ export function getRegisterForm(_req: Request, res: Response): void {
 
 /**
  * GET /ui/docs - Documentation and setup guide.
+ * Uses request host and protocol so URLs match the current deployment (e.g. Railway).
  */
-export function getDocsPage(_req: Request, res: Response): void {
-  const baseUrl = "https://votre-domaine.railway.app"; // Client can replace with window.location.origin in browser
+export function getDocsPage(req: Request, res: Response): void {
+  const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
+  const host = req.get("host") || "votre-domaine.railway.app";
+  const baseUrl = `${protocol}://${host}`;
+  const docsUrl = `${baseUrl}/ui/docs`;
+  const mcpUrl = `${baseUrl}/mcp`;
   res.type("text/html").send(`
 <!DOCTYPE html>
 <html lang="fr">
@@ -365,6 +370,7 @@ export function getDocsPage(_req: Request, res: Response): void {
   <div class="container">
     <h1>Documentation</h1>
     <p>Guide pour configurer et utiliser le MCP Spendesk (Model Context Protocol).</p>
+    <p><strong>Documentation :</strong> <a href="${escapeHtml(docsUrl)}">${escapeHtml(docsUrl)}</a></p>
 
     <h2>Présentation</h2>
     <p>Ce serveur expose l’API Spendesk sous forme d’outils MCP. Il permet à des clients (Cursor, Dust, ChatGPT, etc.) d’interroger vos données Spendesk (settlements, payables, fournisseurs, utilisateurs, etc.) via un protocole standard.</p>
@@ -387,7 +393,7 @@ export function getDocsPage(_req: Request, res: Response): void {
     </div>
     <div class="step">
       <strong>3. URL du MCP</strong><br>
-      L’URL de base du MCP est : <code>/mcp</code> sur ce même domaine. Exemple : <code id="mcpUrl">${baseUrl}/mcp</code>
+      L’URL du MCP pour ce serveur : <a href="${escapeHtml(mcpUrl)}"><code>${escapeHtml(mcpUrl)}</code></a>
     </div>
     <div class="step">
       <strong>4. Headers d’authentification</strong><br>
@@ -408,24 +414,15 @@ export function getDocsPage(_req: Request, res: Response): void {
     </div>
 
     <h2>Exemple avec curl</h2>
-    <p>Initialiser une session MCP puis lister les outils :</p>
-    <pre><code>curl -X POST <span id="curlOrigin">${baseUrl}</span>/mcp \\
+    <p>Initialiser une session MCP :</p>
+    <pre><code>curl -X POST ${escapeHtml(mcpUrl)} \\
   -H "Content-Type: application/json" \\
   -H "X-Client-Token: &lt;votre-clé-api&gt;" \\
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}'</code></pre>
     <p>La réponse contient un header <code>mcp-session-id</code> à renvoyer pour les requêtes suivantes.</p>
 
-    <p style="margin-top: 24px;"><a href="/ui">→ Aller à l’enregistrement</a></p>
+    <p style="margin-top: 24px;"><a href="/ui">→ Aller à l’enregistrement</a> · <a href="/ui/docs">Documentation</a></p>
   </div>
-  <script>
-    (function() {
-      var o = window.location.origin;
-      var mcp = document.getElementById('mcpUrl');
-      var curl = document.getElementById('curlOrigin');
-      if (mcp) mcp.textContent = o + '/mcp';
-      if (curl) curl.textContent = o;
-    })();
-  </script>
 </body>
 </html>
   `);
