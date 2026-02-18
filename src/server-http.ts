@@ -229,7 +229,22 @@ app.get("/mcp", async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   const sessionInfo = sessionId ? sessionStore.get(sessionId) : undefined;
   if (!sessionId || !sessionInfo) {
-    res.status(400).send("Invalid or missing session ID");
+    const accept = (req.headers["accept"] || "").toLowerCase();
+    if (accept.includes("text/html")) {
+      res.status(400).type("text/html").send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>MCP Endpoint</title></head>
+<body style="font-family: sans-serif; max-width: 560px; margin: 40px auto; padding: 20px;">
+  <h1>Endpoint MCP</h1>
+  <p>Cette URL est le point d’entrée du <strong>Model Context Protocol</strong>. Elle ne s’ouvre pas directement dans le navigateur.</p>
+  <p>Pour l’utiliser : configurez un client MCP (Dust, Cursor, script) avec cette URL, puis envoyez d’abord une requête <code>POST /mcp</code> avec la méthode <code>initialize</code> pour obtenir un identifiant de session.</p>
+  <p><a href="/ui/docs">Voir la documentation</a> pour la configuration pas à pas.</p>
+</body>
+</html>`);
+    } else {
+      res.status(400).send("Invalid or missing session ID");
+    }
     return;
   }
   await sessionInfo.transport.handleRequest(req, res);
