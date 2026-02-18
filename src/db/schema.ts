@@ -18,6 +18,16 @@ export interface Client {
   updated_at: string;
 }
 
+export interface Company {
+  id: number;
+  client_id: number;
+  company_key: string;
+  label: string;
+  spendesk_token_encrypted: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * Get encryption key from environment or generate a warning.
  */
@@ -92,6 +102,18 @@ export function initDatabase(db: Database.Database): void {
     );
     
     CREATE INDEX IF NOT EXISTS idx_clients_api_key ON clients(api_key);
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      company_key TEXT UNIQUE NOT NULL,
+      label TEXT NOT NULL,
+      spendesk_token_encrypted TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_companies_client_id ON companies(client_id);
+    CREATE INDEX IF NOT EXISTS idx_companies_company_key ON companies(company_key);
   `);
 }
 

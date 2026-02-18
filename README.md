@@ -112,8 +112,10 @@ Endpoints :
 - **GET /mcp** — Flux SSE (envoyer l'en-tête `mcp-session-id`).
 - **DELETE /mcp** — Fermer la session (en-tête `mcp-session-id`).
 - **GET /ui** — Portail d'enregistrement client (voir section Multi-tenant ci-dessous).
-- **POST /ui/register** — Enregistrer un nouveau client avec son token Spendesk.
-- **GET /ui/success** — Page de confirmation après enregistrement.
+- **POST /ui/register** — Enregistrer un nouveau client avec son token Spendesk (optionnel : nom de la première company).
+- **GET /ui/success** — Page de confirmation après enregistrement (affiche la clé API et la liste des companies).
+- **GET /ui/companies** — Gérer ses companies (liste + formulaire pour en ajouter). Requiert `?apiKey=...`.
+- **POST /ui/companies** — Ajouter une company (body JSON : `apiKey`, `label`, `token`).
 
 ### Portail Multi-tenant
 
@@ -139,11 +141,11 @@ Le serveur supporte un mode **multi-tenant** où chaque client peut enregistrer 
 
 1. **Accéder au portail** : Ouvrez `http://localhost:3000/ui` (ou votre URL déployée + `/ui`).
 
-2. **Entrer le token Spendesk** : Le client entre son token Bearer Spendesk dans le formulaire.
+2. **Entrer le token Spendesk** : Le client entre son token Bearer Spendesk dans le formulaire. Il peut optionnellement donner un **nom de company** (ex. « Spendesk FR ») pour la première company.
 
-3. **Validation** : Le serveur valide le token en appelant l'API Spendesk, puis génère une **clé API unique** (UUID).
+3. **Validation** : Le serveur valide le token en appelant l'API Spendesk, puis génère une **clé API unique** (UUID) et enregistre la première company si un nom a été fourni.
 
-4. **Récupérer la clé API** : La clé API est affichée sur la page de succès. Le client doit la conserver en sécurité.
+4. **Récupérer la clé API** : La clé API est affichée sur la page de succès. Le client doit la conserver en sécurité. La page affiche aussi la liste des **company_key** à utiliser avec le header `X-Company-Id` (voir Multi-company ci-dessous).
 
 #### Utilisation de la clé API
 
@@ -155,6 +157,22 @@ curl -H "X-Client-Token: <clé-api>" \
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{...}}' \
      https://votre-domaine.com/mcp
 ```
+
+#### Multi-company (plusieurs companies Spendesk)
+
+Un même client peut avoir **plusieurs companies** (chacune avec son propre token Spendesk), par exemple Spendesk FR et Spendesk UK. Cela permet de construire un **dashboard consolidé** (ex. avec Dust) en interrogeant chaque company puis en agrégeant les données.
+
+1. **Enregistrement** : Lors de l'inscription, donnez un nom à la première company (ex. « Spendesk FR »). Puis, depuis la page de succès, cliquez sur **Gérer mes companies** (`/ui/companies?apiKey=<votre-clé>`) pour ajouter d'autres companies (ex. « Spendesk UK ») avec leur token respectif.
+
+2. **Headers MCP** :
+   - **`X-Client-Token`** : votre clé API (obligatoire pour identifier le compte).
+   - **`X-Company-Id`** (optionnel) : la **company_key** de la company à interroger (ex. `spendesk-fr`, `spendesk-uk`). Si absent, le serveur utilise la première company ou le token legacy du client.
+
+3. **Exemple avec deux companies (Dust, dashboard consolidé)** :
+   - Configurer le MCP avec une seule URL et `X-Client-Token: <clé-api>`.
+   - Pour les données FR : envoyer les requêtes MCP avec `X-Company-Id: spendesk-fr`.
+   - Pour les données UK : envoyer les requêtes MCP avec `X-Company-Id: spendesk-uk`.
+   - Agréger les résultats côté Dust (ou autre client) pour afficher un spend consolidé.
 
 #### Sécurité
 
@@ -200,7 +218,7 @@ Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Res
 
 1. **Server URL** : `https://votre-domaine.com/mcp` (URL publique de votre déploiement + `/mcp`).
 2. **Authorization** : 
-   - **Mode multi-tenant** : Ajouter le header `X-Client-Token: <clé-api>` à toutes les requêtes (si le client MCP le supporte).
+   - **Mode multi-tenant** : Ajouter le header `X-Client-Token: <clé-api>` à toutes les requêtes (si le client MCP le supporte). Pour cibler une company (multi-company), ajouter aussi `X-Company-Id: <company_key>` (ex. `spendesk-fr`, `spendesk-uk`).
    - **Mode fallback** : Le token Spendesk est dans `SPENDESK_API_TOKEN` côté serveur (pas d'auth HTTP requise).
    - Pour protéger l'accès, mettre un reverse proxy (auth, API key) devant `/mcp`.
 
@@ -219,6 +237,33 @@ MCP_BASE_URL=https://votre-app.up.railway.app node scripts/test-mcp-http.mjs
 ```
 
 En cas de succès : `✓ MCP HTTP test passed.`
+
+#### Comment tester (multi-tenant / multi-company)
+
+1. **Démarrer le serveur** (avec `ENCRYPTION_KEY` et optionnellement `SPENDESK_API_TOKEN`) :
+   ```bash
+   npm run start:http
+   ```
+
+2. **Récupérer une clé API** : aller sur `http://localhost:3000/ui`, entrer un token Spendesk (et un nom de company, ex. « Spendesk FR »), valider. Sur la page de succès, copier la **clé API** et noter la **company_key** (ex. `spendesk-fr`). Pour une deuxième company : cliquer sur « Gérer mes companies », ajouter « Spendesk UK » avec son token.
+
+3. **Tester le MCP avec la clé API** :
+   ```bash
+   X_CLIENT_TOKEN=<votre-clé-api> node scripts/test-mcp-http.mjs
+   ```
+
+4. **Tester en ciblant une company** (si vous en avez plusieurs) :
+   ```bash
+   X_CLIENT_TOKEN=<clé-api> X_COMPANY_ID=spendesk-fr node scripts/test-mcp-http.mjs
+   X_CLIENT_TOKEN=<clé-api> X_COMPANY_ID=spendesk-uk node scripts/test-mcp-http.mjs
+   ```
+
+5. **Tester vers un déploiement** (ex. Railway) :
+   ```bash
+   MCP_BASE_URL=https://votre-app.railway.app X_CLIENT_TOKEN=<clé-api> node scripts/test-mcp-http.mjs
+   ```
+
+Sans `X_CLIENT_TOKEN`, le script utilise le token fallback (`SPENDESK_API_TOKEN`) si le serveur en est configuré.
 
 ## Outils (Tools)
 

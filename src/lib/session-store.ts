@@ -8,6 +8,7 @@ export interface SessionInfo {
   transport: StreamableHTTPServerTransport;
   clientToken?: string;
   clientApiKey?: string;
+  companyId?: string;
   createdAt: number;
 }
 
@@ -24,13 +25,20 @@ export class SessionStore {
   }
 
   /**
-   * Store a session with optional client token info.
+   * Store a session with optional client token and company info.
    */
-  set(sessionId: string, transport: StreamableHTTPServerTransport, clientToken?: string, clientApiKey?: string): void {
+  set(
+    sessionId: string,
+    transport: StreamableHTTPServerTransport,
+    clientToken?: string,
+    clientApiKey?: string,
+    companyId?: string
+  ): void {
     this.sessions.set(sessionId, {
       transport,
       clientToken,
       clientApiKey,
+      companyId,
       createdAt: Date.now(),
     });
   }

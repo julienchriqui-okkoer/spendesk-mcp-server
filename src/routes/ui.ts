@@ -3,6 +3,14 @@
  */
 
 import type { Request, Response } from "express";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 import { DatabaseClient } from "../db/client.js";
 import { SpendeskClient } from "../spendesk-api/client.js";
 
@@ -23,14 +31,20 @@ function getDbClient(): DatabaseClient {
 
 /**
  * Validate Spendesk token by making a test API call.
+ * Uses same env as server (SPENDESK_USE_DEMO, SPENDESK_BASE_URL) so sandbox tokens are validated against sandbox API.
  */
 async function validateSpendeskToken(token: string): Promise<boolean> {
   try {
-    const client = new SpendeskClient({ apiToken: token });
-    // Try to fetch wallet summary as a lightweight validation
-    await client.get("/v1/wallet/summary");
+    const useDemo =
+      process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+    const baseUrl = process.env.SPENDESK_BASE_URL;
+    const client = new SpendeskClient({ apiToken: token, useDemo, baseUrl });
+    // Try a simple endpoint that should be available: /v1/users (with pagination to limit response)
+    await client.get("/v1/users", { page: "1", per_page: "1" });
     return true;
   } catch (err) {
+    // Log error for debugging (but don't expose token)
+    console.error("[Token validation] Failed:", err instanceof Error ? err.message : String(err));
     return false;
   }
 }
@@ -157,6 +171,16 @@ export function getRegisterForm(_req: Request, res: Response): void {
     
     <form id="registerForm">
       <div class="form-group">
+        <label for="label">Nom de la company (ex. Spendesk FR)</label>
+        <input
+          type="text"
+          id="label"
+          name="label"
+          placeholder="Spendesk FR"
+          autocomplete="off"
+        />
+      </div>
+      <div class="form-group">
         <label for="token">Token Spendesk API</label>
         <input
           type="text"
@@ -191,6 +215,7 @@ export function getRegisterForm(_req: Request, res: Response): void {
       submitBtn.textContent = 'Validation...';
       
       const token = tokenInput.value.trim();
+      const label = document.getElementById('label').value.trim();
       
       if (!token) {
         errorDiv.textContent = 'Veuillez entrer un token';
@@ -205,7 +230,7 @@ export function getRegisterForm(_req: Request, res: Response): void {
         const res = await fetch('/ui/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
+          body: JSON.stringify({ token, label: label || undefined })
         });
         
         console.log('Response status:', res.status);
@@ -299,7 +324,7 @@ export async function registerClient(req: Request, res: Response): Promise<void>
 }
 
 async function processRegistration(body: any, req: Request, res: Response): Promise<void> {
-  const { token } = body || {};
+  const { token, label } = body || {};
   
   if (!token || typeof token !== "string" || !token.trim()) {
     console.log("[Register] Missing or invalid token");
@@ -308,7 +333,8 @@ async function processRegistration(body: any, req: Request, res: Response): Prom
   }
 
   const trimmedToken = token.trim();
-  console.log("[Register] Token length:", trimmedToken.length);
+  const firstCompanyLabel = typeof label === "string" && label.trim() ? label.trim() : undefined;
+  console.log("[Register] Token length:", trimmedToken.length, "firstCompanyLabel:", firstCompanyLabel);
 
   // Validate token with Spendesk API
   console.log("[Register] Validating token with Spendesk API...");
@@ -321,21 +347,22 @@ async function processRegistration(body: any, req: Request, res: Response): Prom
     return;
   }
 
-  console.log("[Register] Token validated, creating client...");
-  // Create client and get API key
-  const client = getDbClient();
-  const apiKey = client.createClient(trimmedToken);
-  console.log("[Register] Client created with API key:", apiKey.substring(0, 8) + "...");
+  console.log("[Register] Token validated, creating client and first company...");
+  const db = getDbClient();
+  const apiKey = db.createClient(trimmedToken, firstCompanyLabel ?? "Default");
+  const companies = db.listCompanies(apiKey);
+  console.log("[Register] Client created with API key:", apiKey.substring(0, 8) + "...", "companies:", companies.length);
 
   res.json({
     success: true,
     apiKey,
+    companies,
     message: "Client registered successfully",
   });
 }
 
 /**
- * GET /ui/success - Success page with API key.
+ * GET /ui/success - Success page with API key and companies list.
  */
 export function getSuccessPage(req: Request, res: Response): void {
   const apiKey = req.query.apiKey as string | undefined;
@@ -344,6 +371,28 @@ export function getSuccessPage(req: Request, res: Response): void {
     res.redirect("/ui");
     return;
   }
+
+  let companies: { company_key: string; label: string }[] = [];
+  try {
+    const db = getDbClient();
+    if (db.apiKeyExists(apiKey)) {
+      companies = db.listCompanies(apiKey);
+    }
+  } catch {
+    // ignore
+  }
+
+  const companiesHtml =
+    companies.length === 0
+      ? ""
+      : `
+    <h3 style="margin-top: 24px; margin-bottom: 12px; font-size: 18px;">Multi-company (header X-Company-Id)</h3>
+    <p style="color: #666; margin-bottom: 12px;">Pour cibler une company dans vos appels MCP, ajoutez le header <code>X-Company-Id</code> avec la clé ci-dessous :</p>
+    <ul style="margin: 12px 0; padding-left: 20px;">
+      ${companies.map((c) => `<li><strong>${escapeHtml(c.label)}</strong> : <code>X-Company-Id: ${escapeHtml(c.company_key)}</code></li>`).join("")}
+    </ul>
+    <p style="margin-top: 12px;"><a href="/ui/companies?apiKey=${encodeURIComponent(apiKey)}" style="color: #667eea;">Gérer mes companies (ajouter Spendesk UK, etc.)</a></p>
+  `;
 
   res.type("text/html").send(`
 <!DOCTYPE html>
@@ -472,6 +521,7 @@ curl -H "X-Client-Token: ${apiKey}" -H "Content-Type: application/json" \\
       </code>
     </div>
     
+    ${companiesHtml}
     <div class="warning">
       <strong>⚠️ Important</strong>
       Conservez cette clé API en sécurité. Elle vous permet d'accéder à votre compte Spendesk via le MCP.
@@ -497,4 +547,154 @@ curl -H "X-Client-Token: ${apiKey}" -H "Content-Type: application/json" \\
 </body>
 </html>
   `);
+}
+
+/**
+ * GET /ui/companies - List companies and form to add another (requires apiKey in query).
+ */
+export function getCompaniesPage(req: Request, res: Response): void {
+  const apiKey = req.query.apiKey as string | undefined;
+  if (!apiKey) {
+    res.redirect("/ui");
+    return;
+  }
+  let companies: { company_key: string; label: string }[] = [];
+  let validKey = false;
+  try {
+    const db = getDbClient();
+    validKey = db.apiKeyExists(apiKey);
+    if (validKey) companies = db.listCompanies(apiKey);
+  } catch {
+    // ignore
+  }
+  if (!validKey) {
+    res.status(404).type("text/html").send(`
+      <!DOCTYPE html><html><body style="font-family: sans-serif; padding: 40px;">
+        <h1>Clé API invalide</h1>
+        <p><a href="/ui">Retour à l'enregistrement</a></p>
+      </body></html>`);
+    return;
+  }
+
+  res.type("text/html").send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mes companies - Spendesk MCP Server</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+    .container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 600px; margin: 0 auto; padding: 40px; }
+    h1 { color: #333; margin-bottom: 10px; font-size: 24px; }
+    .subtitle { color: #666; margin-bottom: 24px; font-size: 14px; }
+    ul { list-style: none; margin: 16px 0; }
+    li { padding: 12px; background: #f5f5f5; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    li code { font-size: 12px; background: #e0e0e0; padding: 4px 8px; border-radius: 4px; }
+    .form-group { margin: 24px 0 16px; }
+    label { display: block; color: #333; margin-bottom: 8px; font-weight: 500; font-size: 14px; }
+    input[type="text"] { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+    button { padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    button:hover { opacity: 0.95; }
+    .error { background: #fee; color: #c33; padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 14px; display: none; }
+    .error.show { display: block; }
+    .back { margin-top: 24px; }
+    .back a { color: #667eea; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Mes companies</h1>
+    <p class="subtitle">Ajoutez une company Spendesk (ex. Spendesk UK) pour utiliser plusieurs tokens avec le même compte MCP.</p>
+    ${companies.length > 0 ? "<p><strong>Companies enregistrées :</strong></p><ul>" + companies.map((c) => `<li><span>${escapeHtml(c.label)}</span> <code>X-Company-Id: ${escapeHtml(c.company_key)}</code></li>`).join("") + "</ul>" : "<p>Aucune company pour l'instant.</p>"}
+    <form id="addForm" method="post" action="/ui/companies">
+      <input type="hidden" name="apiKey" value="${escapeHtml(apiKey)}" />
+      <div class="form-group">
+        <label for="label">Nom de la company (ex. Spendesk UK)</label>
+        <input type="text" id="label" name="label" placeholder="Spendesk UK" required />
+        <label for="token">Token Spendesk API pour cette company</label>
+        <input type="text" id="token" name="token" placeholder="Token Bearer" required autocomplete="off" />
+      </div>
+      <button type="submit">Ajouter la company</button>
+    </form>
+    <div class="error" id="error"></div>
+    <p class="back"><a href="/ui/success?apiKey=${encodeURIComponent(apiKey)}">Retour à ma clé API</a></p>
+  </div>
+  <script>
+    document.getElementById('addForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const apiKey = form.querySelector('[name=apiKey]').value;
+      const label = form.querySelector('[name=label]').value.trim();
+      const token = form.querySelector('[name=token]').value.trim();
+      const errEl = document.getElementById('error');
+      errEl.classList.remove('show');
+      try {
+        const res = await fetch('/ui/companies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey, label, token })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        window.location.href = '/ui/companies?apiKey=' + encodeURIComponent(apiKey);
+      } catch (err) {
+        errEl.textContent = err.message || 'Erreur';
+        errEl.classList.add('show');
+      }
+    });
+  </script>
+</body>
+</html>
+  `);
+}
+
+/**
+ * POST /ui/companies - Add a company (body: apiKey, label, token).
+ */
+export async function addCompany(req: Request, res: Response): Promise<void> {
+  let body = req.body;
+  if (!body || (typeof body === "object" && Object.keys(body).length === 0)) {
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => resolve());
+      req.on("error", reject);
+    });
+    const data = Buffer.concat(chunks).toString("utf8");
+    body = data ? JSON.parse(data) : {};
+  }
+  const { apiKey, label, token } = body || {};
+  if (!apiKey || !label || !token || typeof apiKey !== "string" || typeof label !== "string" || typeof token !== "string") {
+    res.status(400).json({ error: "apiKey, label and token are required" });
+    return;
+  }
+  const trimmedToken = token.trim();
+  const trimmedLabel = label.trim();
+  if (!trimmedLabel) {
+    res.status(400).json({ error: "label is required" });
+    return;
+  }
+  const isValid = await validateSpendeskToken(trimmedToken);
+  if (!isValid) {
+    res.status(400).json({
+      error: "Invalid Spendesk token. Please verify your token for this company.",
+    });
+    return;
+  }
+  try {
+    const db = getDbClient();
+    if (!db.apiKeyExists(apiKey)) {
+      res.status(404).json({ error: "Invalid API key" });
+      return;
+    }
+    const companyKey = db.createCompany(apiKey, trimmedLabel, trimmedToken);
+    res.json({ success: true, company_key: companyKey, label: trimmedLabel });
+  } catch (err) {
+    console.error("Add company error:", err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Internal server error",
+    });
+  }
 }

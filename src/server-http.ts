@@ -15,7 +15,7 @@ import { SpendeskClient } from "./spendesk-api/client.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
-import { getRegisterForm, registerClient, getSuccessPage } from "./routes/ui.js";
+import { getRegisterForm, registerClient, getSuccessPage, getCompaniesPage, addCompany } from "./routes/ui.js";
 
 function getApiToken(): string | null {
   return process.env.SPENDESK_API_TOKEN || null;
@@ -169,6 +169,10 @@ app.post("/ui/register", async (req: Request, res: Response) => {
   await registerClient(req, res);
 });
 app.get("/ui/success", getSuccessPage);
+app.get("/ui/companies", getCompaniesPage);
+app.post("/ui/companies", async (req: Request, res: Response) => {
+  await addCompany(req, res);
+});
 
 // Apply authentication middleware to MCP routes
 app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
@@ -190,7 +194,7 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (transport) {
-            sessionStore.set(id, transport, clientToken, req.clientApiKey);
+            sessionStore.set(id, transport, clientToken, req.clientApiKey, req.companyId);
           }
         },
       });
