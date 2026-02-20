@@ -22,25 +22,26 @@ function navHtml(current: "register" | "docs" | "success" | "companies"): string
   </nav>`;
 }
 
-/** Shared styles for nav (include once per page). */
+/** Shared styles for nav (doc-style: white bar, border bottom). */
 const navStyles = `
   .ui-nav {
-    background: rgba(255,255,255,0.95);
-    padding: 12px 24px;
-    border-radius: 0 0 12px 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    background: #fff;
+    padding: 14px 24px;
+    border-bottom: 1px solid #e5e7eb;
     display: flex;
     gap: 24px;
-    margin-bottom: 24px;
+    margin-bottom: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
   .ui-nav-link {
-    color: #555;
+    color: #4b5563;
     text-decoration: none;
     font-weight: 500;
     font-size: 15px;
   }
-  .ui-nav-link:hover { color: #667eea; }
-  .ui-nav-link.active { color: #667eea; }
+  .ui-nav-link:hover { color: #6366f1; }
+  .ui-nav-link.active { color: #6366f1; }
 `;
 
 import { DatabaseClient } from "../db/client.js";
@@ -96,19 +97,21 @@ export function getRegisterForm(_req: Request, res: Response): void {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #f9fafb;
       min-height: 100vh;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column;
+      align-items: stretch;
       padding: 20px;
     }
     .container {
-      background: white;
+      background: #fff;
       border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.08);
       max-width: 500px;
       width: 100%;
+      margin: 0 auto;
       padding: 40px;
     }
     h1 {
@@ -141,12 +144,12 @@ export function getRegisterForm(_req: Request, res: Response): void {
     }
     input[type="text"]:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: #6366f1;
     }
     button {
       width: 100%;
       padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #6366f1;
       color: white;
       border: none;
       border-radius: 6px;
@@ -157,7 +160,7 @@ export function getRegisterForm(_req: Request, res: Response): void {
     }
     button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
     }
     button:active {
       transform: translateY(0);
@@ -325,31 +328,35 @@ export function getDocsPage(req: Request, res: Response): void {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #f9fafb;
       min-height: 100vh;
       padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
     }
     .container {
-      background: white;
+      background: #fff;
       border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.08);
       max-width: 720px;
       margin: 0 auto;
       padding: 40px;
     }
-    h1 { color: #333; margin-bottom: 8px; font-size: 26px; }
-    h2 { color: #444; margin: 28px 0 12px; font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
-    p { color: #555; line-height: 1.65; margin-bottom: 12px; font-size: 14px; }
-    ul { margin: 8px 0 16px 20px; color: #555; line-height: 1.7; font-size: 14px; }
+    h1 { color: #111827; margin-bottom: 8px; font-size: 26px; }
+    h2 { color: #111827; margin: 28px 0 12px; font-size: 18px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+    p { color: #4b5563; line-height: 1.65; margin-bottom: 12px; font-size: 14px; }
+    ul { margin: 8px 0 16px 20px; color: #4b5563; line-height: 1.7; font-size: 14px; }
     code {
-      background: #f0f0f0;
+      background: #f3f4f6;
       padding: 2px 6px;
       border-radius: 4px;
       font-size: 13px;
     }
     pre {
-      background: #1e1e1e;
-      color: #d4d4d4;
+      background: #0f172a;
+      color: #e5e7eb;
       padding: 16px;
       border-radius: 8px;
       overflow-x: auto;
@@ -359,8 +366,8 @@ export function getDocsPage(req: Request, res: Response): void {
     }
     pre code { background: none; padding: 0; }
     .step { margin-bottom: 20px; }
-    .step strong { color: #333; }
-    a { color: #667eea; text-decoration: none; }
+    .step strong { color: #111827; }
+    a { color: #6366f1; text-decoration: none; }
     a:hover { text-decoration: underline; }
     ${navStyles}
   </style>
@@ -550,7 +557,7 @@ export function getSuccessPage(req: Request, res: Response): void {
     <ul style="margin: 12px 0; padding-left: 20px;">
       ${companies.map((c) => `<li><strong>${escapeHtml(c.label)}</strong> : <code>X-Company-Id: ${escapeHtml(c.company_key)}</code></li>`).join("")}
     </ul>
-    <p style="margin-top: 12px;"><a href="/ui/companies?apiKey=${encodeURIComponent(apiKey)}" style="color: #667eea;">Gérer mes companies (ajouter Spendesk UK, etc.)</a></p>
+    <p style="margin-top: 12px;"><a href="/ui/companies?apiKey=${encodeURIComponent(apiKey)}" style="color: #6366f1;">Gérer mes companies (ajouter Spendesk UK, etc.)</a></p>
   `;
 
   res.type("text/html").send(`
@@ -564,19 +571,21 @@ export function getSuccessPage(req: Request, res: Response): void {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #f9fafb;
       min-height: 100vh;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column;
+      align-items: stretch;
       padding: 20px;
     }
     .container {
-      background: white;
+      background: #fff;
       border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.08);
       max-width: 600px;
       width: 100%;
+      margin: 0 auto;
       padding: 40px;
     }
     h1 {
@@ -605,7 +614,7 @@ export function getSuccessPage(req: Request, res: Response): void {
       position: absolute;
       top: 12px;
       right: 12px;
-      background: #667eea;
+      background: #6366f1;
       color: white;
       border: none;
       border-radius: 4px;
@@ -615,7 +624,7 @@ export function getSuccessPage(req: Request, res: Response): void {
       transition: background 0.2s;
     }
     .copy-btn:hover {
-      background: #5568d3;
+      background: #4f46e5;
     }
     .instructions {
       background: #e3f2fd;
@@ -700,7 +709,7 @@ curl -H "X-Client-Token: ${apiKey}" -H "Content-Type: application/json" \\
         btn.style.background = '#4caf50';
         setTimeout(() => {
           btn.textContent = originalText;
-          btn.style.background = '#667eea';
+          btn.style.background = '#6366f1';
         }, 2000);
       });
     }
@@ -746,8 +755,8 @@ export function getCompaniesPage(req: Request, res: Response): void {
   <title>Mes companies - Spendesk MCP Server</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
-    .container { background: white; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 600px; margin: 0 auto; padding: 40px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; min-height: 100vh; padding: 20px; display: flex; flex-direction: column; align-items: stretch; }
+    .container { background: #fff; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(15,23,42,0.08); max-width: 600px; margin: 0 auto; padding: 40px; }
     h1 { color: #333; margin-bottom: 10px; font-size: 24px; }
     .subtitle { color: #666; margin-bottom: 24px; font-size: 14px; }
     ul { list-style: none; margin: 16px 0; }
@@ -756,12 +765,12 @@ export function getCompaniesPage(req: Request, res: Response): void {
     .form-group { margin: 24px 0 16px; }
     label { display: block; color: #333; margin-bottom: 8px; font-weight: 500; font-size: 14px; }
     input[type="text"] { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
-    button { padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    button { padding: 12px 24px; background: #6366f1; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
     button:hover { opacity: 0.95; }
     .error { background: #fee; color: #c33; padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 14px; display: none; }
     .error.show { display: block; }
     .back { margin-top: 24px; }
-    .back a { color: #667eea; text-decoration: none; }
+    .back a { color: #6366f1; text-decoration: none; }
     ${navStyles}
   </style>
 </head>

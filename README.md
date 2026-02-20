@@ -89,6 +89,41 @@ Ou avec `npx` depuis le répertoire du projet :
 
 (En production, privilégier `node dist/index.js` après `npm run build`.)
 
+### Configurer Claude Desktop
+
+1. **Compiler le projet** (si ce n’est pas déjà fait) :
+   ```bash
+   cd /chemin/vers/spendesk-mcp-server
+   npm run build
+   ```
+
+2. **Ouvrir la config MCP de Claude** :
+   - macOS : `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - Ou dans Claude Desktop : **Paramètres** → **Developer** → **Edit Config**
+
+3. **Ajouter le serveur Spendesk** dans `mcpServers` (remplacer le chemin et le token) :
+   ```json
+   {
+     "mcpServers": {
+       "spendesk": {
+         "command": "node",
+         "args": ["/chemin/vers/spendesk-mcp-server/dist/index.js"],
+         "env": {
+           "SPENDESK_API_TOKEN": "<votre_token_spendesk>"
+         }
+       }
+     }
+   }
+   ```
+   Avec un chemin absolu réel, par exemple :
+   ```json
+   "args": ["/Users/julien.chriqui/spendesk-mcp-server/dist/index.js"]
+   ```
+
+4. **Redémarrer complètement Claude Desktop** (quitter l’app puis la rouvrir). Les outils MCP apparaissent (icône 🔨 à côté de la zone de saisie).
+
+**Option multi-tenant (sans token dans la config)** : si le serveur tourne en HTTP avec portail d’enregistrement, Claude Desktop en mode stdio ne peut pas utiliser ce flux. Utilisez alors le token dans `env` comme ci-dessus, ou un outil qui se connecte au serveur HTTP (URL + clé API).
+
 ### Serveur HTTP (Streamable) — ChatGPT, etc.
 
 Pour utiliser le MCP depuis **ChatGPT**, un client HTTP ou une plateforme qui parle MCP en Streamable HTTP, lancez le serveur HTTP :
@@ -279,6 +314,7 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_get_payables` – Liste des payables (avec filtres via `filters`)
 - `spendesk_get_payable` / `spendesk_get_payable_attachments` – Détail payable et pièces jointes
 - `spendesk_update_payable_bookkeeping` – Statut comptable d'un payable (sync ERP)
+- **Report (réponses clés en main)** : `spendesk_get_spend_dashboard` – Dashboard spend (répartition par cost center / catégorie / compte de charge) ; `spendesk_get_top_suppliers_by_spend` – Top N fournisseurs par spend avec payables/settlements ; `spendesk_get_purchase_orders_and_payables_export` – Export POs + payables d'une période, liés par fournisseur
 - `spendesk_get_wallet_loads` / `spendesk_get_wallet_summary` – Recharges et résumé wallet
 
 ### Analytical
@@ -302,6 +338,38 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Commandes d'achat (avec filtres via `filters`)
 
 Les outils qui listent des éléments acceptent une pagination (`page`, `perPage` 1–100) et des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`).
+
+## Réponses clés en main (Claude / Dust)
+
+Les clients peuvent poser **une seule fois** une des trois questions en langage naturel dans Claude ou Dust et recevoir une **réponse correcte, précise et bien structurée** (tableaux Markdown, sections), sans avoir à préciser les outils ou reformater.
+
+### Mapping question → outil
+
+| Question type | Outil à utiliser | Paramètres |
+|---------------|------------------|------------|
+| Dashboard spend, répartition des dépenses par cost center / catégorie / compte de charge pour une période (ex. Q1 2026, janvier 2026) | `spendesk_get_spend_dashboard` | `from`, `to` (dates ISO) ; optionnel : `groupBy` (`costCenter`, `expenseCategory`, `chargeAccount`) |
+| Top 10 (ou N) fournisseurs par spend, avec payables/settlements associés | `spendesk_get_top_suppliers_by_spend` | `from`, `to` ; `limit` (défaut 10) |
+| Export des purchase orders créés sur une période avec les payables associés | `spendesk_get_purchase_orders_and_payables_export` | `from`, `to` |
+
+**Convention de dates** : Q1 2026 = `from: 2026-01-01`, `to: 2026-03-31` ; janvier 2026 = `from: 2026-01-01`, `to: 2026-01-31`.
+
+### Format de réponse recommandé
+
+- **Dashboard spend** (après `spendesk_get_spend_dashboard`) : résumé (période, total, devise) ; tableaux Markdown « Par cost center », « Par catégorie de dépense », « Par compte de charge » (colonnes : nom/id, montant, nombre d’éléments).
+- **Top fournisseurs** (après `spendesk_get_top_suppliers_by_spend`) : tableau principal (rang, fournisseur, montant total, devise) ; pour chaque fournisseur (ou sur demande) : liste des payables/settlements (id, montant, date).
+- **Export POs + payables** (après `spendesk_get_purchase_orders_and_payables_export`) : nombre de POs et de payables sur la période ; tableaux ou listes des POs et des payables ; regroupement par fournisseur si utile.
+
+### Instructions pour Claude / Dust (copier-coller)
+
+Vous pouvez coller le bloc suivant dans les **instructions du projet** (Claude) ou dans le **système du canal** (Dust) pour que l’assistant choisisse le bon outil et formate la réponse :
+
+```
+Pour les questions sur le spend (dashboard, répartition par cost center / catégorie / compte de charge), utilise l’outil spendesk_get_spend_dashboard avec from/to selon la période demandée (Q1 = 2026-01-01 à 2026-03-31, janvier = 2026-01-01 à 2026-01-31). Présente le résultat en tableaux Markdown avec les sections par cost center, par catégorie, par compte de charge.
+
+Pour le top 10 fournisseurs par spend, utilise spendesk_get_top_suppliers_by_spend. Affiche un tableau classé et les payables/settlements associés pour chaque fournisseur.
+
+Pour l’export des POs et payables d’une période, utilise spendesk_get_purchase_orders_and_payables_export. Présente les POs et payables sous forme de tableaux, avec regroupement par fournisseur si utile.
+```
 
 ## Ressources (Resources)
 

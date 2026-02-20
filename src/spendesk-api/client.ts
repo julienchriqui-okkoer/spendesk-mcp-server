@@ -53,6 +53,10 @@ export class SpendeskClient {
       Object.entries(options.searchParams).forEach(([k, v]) =>
         url.searchParams.set(k, v)
       );
+      // Debug: log purchase orders requests to verify filter params
+      if (path.includes("purchase-orders")) {
+        console.log("[DEBUG] Purchase Orders URL:", url.toString());
+      }
     }
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiToken}`,

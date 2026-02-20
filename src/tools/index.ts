@@ -1,6 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpendeskClient } from "../spendesk-api/client.js";
 import { SpendeskPaths } from "../spendesk-api/endpoints.js";
+import {
+  fetchPayablesForPeriod,
+  aggregateByCostCenter,
+  aggregateByExpenseCategory,
+  aggregateByChargeAccount,
+  aggregateBySupplier,
+} from "../lib/aggregate-payables.js";
 import { z } from "zod";
 
 const paginationSchema = {
@@ -117,7 +124,9 @@ function buildSettlementsQueryParams(args: {
 }
 
 /**
- * Build query params specifically for purchase orders with dedicated parameters.
+ * Build query params for purchase orders. The Spendesk API expects creation date
+ * as "from" / "to" (not createdFrom/createdTo) and snake_case for some params.
+ * We map tool args (createdFrom, supplierId, etc.) to the API query param names.
  */
 function buildPurchaseOrdersQueryParams(args: {
   page?: number;
@@ -136,40 +145,46 @@ function buildPurchaseOrdersQueryParams(args: {
   filters?: Record<string, unknown>;
 }): Record<string, string> {
   const params = paginate(args);
-  
-  // Add dedicated purchase order parameters
+
   if (args.status != null) params.status = String(args.status);
   if (args.state != null) params.state = String(args.state);
-  if (args.supplierId != null) params.supplierId = String(args.supplierId);
-  if (args.userId != null) params.userId = String(args.userId);
-  
-  // Date filters - support both short (from/to) and explicit (createdFrom/createdTo, updatedFrom/updatedTo) formats
-  if (args.from != null) params.from = String(args.from);
-  if (args.to != null) params.to = String(args.to);
-  if (args.createdFrom != null) params.createdFrom = String(args.createdFrom);
-  if (args.createdTo != null) params.createdTo = String(args.createdTo);
-  if (args.updatedFrom != null) params.updatedFrom = String(args.updatedFrom);
-  if (args.updatedTo != null) params.updatedTo = String(args.updatedTo);
-  
-  // Handle ids parameter (can be string or array)
+  if (args.supplierId != null) params.supplier_id = String(args.supplierId);
+  if (args.userId != null) params.user_id = String(args.userId);
+
+  // Creation date: Try both "from"/"to" and "created_from"/"created_to" since API might expect snake_case.
+  // Accept from/to and createdFrom/createdTo in the tool, map to API param names.
+  const fromDate = args.from ?? args.createdFrom;
+  const toDate = args.to ?? args.createdTo;
+  if (fromDate != null) {
+    // Try created_from first (snake_case, aligned with per_page, supplier_id, etc.)
+    params.created_from = String(fromDate);
+    // Also send "from" as fallback in case API expects that
+    params.from = String(fromDate);
+  }
+  if (toDate != null) {
+    params.created_to = String(toDate);
+    params.to = String(toDate);
+  }
+
+  if (args.updatedFrom != null) params.updated_from = String(args.updatedFrom);
+  if (args.updatedTo != null) params.updated_to = String(args.updatedTo);
+
   if (args.ids != null) {
     if (Array.isArray(args.ids)) {
-      // If array, join with comma (common API pattern)
       params.ids = args.ids.join(",");
     } else {
       params.ids = String(args.ids);
     }
   }
-  
-  // Add any additional filters
+
   if (args.filters) {
     for (const [key, value] of Object.entries(args.filters)) {
-      if (value != null && !params[key]) { // Don't override dedicated params
+      if (value != null && !params[key]) {
         params[key] = String(value);
       }
     }
   }
-  
+
   return params;
 }
 
@@ -300,6 +315,86 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
 
+      case "spendesk_get_top_suppliers_by_spend": {
+        const from = String(args.from ?? "");
+        const to = String(args.to ?? "");
+        const limit = Math.min(100, Math.max(1, Number(args.limit ?? 10)));
+        const { payables, error } = await fetchPayablesForPeriod(api, from, to);
+        const bySupplier = aggregateBySupplier(payables).slice(0, limit);
+        return { period: { from, to }, topSuppliers: bySupplier, error };
+      }
+
+      case "spendesk_get_spend_dashboard": {
+        const from = String(args.from ?? "");
+        const to = String(args.to ?? "");
+        const groupBy = args.groupBy as "costCenter" | "expenseCategory" | "chargeAccount" | undefined;
+        const { payables, error } = await fetchPayablesForPeriod(api, from, to);
+        const totalAmount = payables.reduce((sum, p) => sum + (p.functionalAmount || p.amount), 0);
+        const currency = payables[0]?.currency ?? "EUR";
+        const base = { period: { from, to }, totalAmount, currency, error };
+        if (groupBy === "costCenter") return { ...base, byCostCenter: aggregateByCostCenter(payables) };
+        if (groupBy === "expenseCategory") return { ...base, byExpenseCategory: aggregateByExpenseCategory(payables) };
+        if (groupBy === "chargeAccount") return { ...base, byChargeAccount: aggregateByChargeAccount(payables) };
+        return {
+          ...base,
+          byCostCenter: aggregateByCostCenter(payables),
+          byExpenseCategory: aggregateByExpenseCategory(payables),
+          byChargeAccount: aggregateByChargeAccount(payables),
+        };
+      }
+
+      case "spendesk_get_purchase_orders_and_payables_export": {
+        const from = String(args.from ?? "");
+        const to = String(args.to ?? "");
+        const purchaseOrders: unknown[] = [];
+        for (let page = 1; page <= 50; page++) {
+          const params = buildPurchaseOrdersQueryParams({
+            from,
+            to,
+            page,
+            perPage: 100,
+          });
+          const res = await api.get<{ data?: unknown[]; purchaseOrders?: unknown[] }>(
+            SpendeskPaths.getPurchaseOrders,
+            params
+          );
+          const list = (res as Record<string, unknown>)?.data ?? (res as Record<string, unknown>)?.purchaseOrders ?? [];
+          const items = Array.isArray(list) ? list : [];
+          if (items.length === 0) break;
+          purchaseOrders.push(...items);
+          if (items.length < 100) break;
+        }
+        const { payables } = await fetchPayablesForPeriod(api, from, to);
+        const bySupplierMap = new Map<
+          string,
+          { supplierName: string; purchaseOrders: unknown[]; payables: unknown[] }
+        >();
+        for (const po of purchaseOrders) {
+          const p = po as Record<string, unknown>;
+          const supplierId = String(p.supplierId ?? p.supplier_id ?? "_unknown");
+          const supplierName = String(p.supplierName ?? p.supplier_name ?? "Unknown");
+          if (!bySupplierMap.has(supplierId)) {
+            bySupplierMap.set(supplierId, { supplierName, purchaseOrders: [], payables: [] });
+          }
+          bySupplierMap.get(supplierId)!.purchaseOrders.push(po);
+        }
+        for (const pay of payables) {
+          const supplierId = String(pay.supplierId ?? pay.supplierName ?? "_unknown");
+          const supplierName = pay.supplierName ?? pay.supplierId ?? "Unknown";
+          if (!bySupplierMap.has(supplierId)) {
+            bySupplierMap.set(supplierId, { supplierName, purchaseOrders: [], payables: [] });
+          }
+          bySupplierMap.get(supplierId)!.payables.push(pay.raw);
+        }
+        const bySupplier = Array.from(bySupplierMap.entries()).map(([supplierId, v]) => ({
+          supplierId,
+          supplierName: v.supplierName,
+          purchaseOrders: v.purchaseOrders,
+          payables: v.payables,
+        }));
+        return { period: { from, to }, purchaseOrders, payables: payables.map((p) => p.raw), bySupplier };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -370,6 +465,41 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     },
     async (args) => toContent(await run("spendesk_update_payable_bookkeeping", args))
   );
+
+  // —— Report (key answers) ———————————————————————————————————————————————————
+  mcp.tool(
+    "spendesk_get_spend_dashboard",
+    "Use when the user asks for a spend dashboard, spend breakdown by cost center / expense category / charge account for a given period (e.g. Q1 2026, January 2026). Returns aggregated data ready to display as tables.",
+    {
+      from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
+      to: z.string().describe("End date ISO (e.g. 2026-03-31 or 2026-01-31)"),
+      groupBy: z
+        .enum(["costCenter", "expenseCategory", "chargeAccount"])
+        .optional()
+        .describe("Optional: return only this aggregation"),
+    },
+    async (args) => toContent(await run("spendesk_get_spend_dashboard", args))
+  );
+  mcp.tool(
+    "spendesk_get_top_suppliers_by_spend",
+    "Use when the user asks for top N suppliers by spend for a period, with associated payables or settlements. Returns ranked list with details.",
+    {
+      from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
+      to: z.string().describe("End date ISO (e.g. 2026-03-31)"),
+      limit: z.number().min(1).max(100).optional().describe("Number of top suppliers (default 10)"),
+    },
+    async (args) => toContent(await run("spendesk_get_top_suppliers_by_spend", args))
+  );
+  mcp.tool(
+    "spendesk_get_purchase_orders_and_payables_export",
+    "Use when the user asks for an export of all purchase orders created in a period with their associated payables. Returns POs and payables linked by supplier.",
+    {
+      from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
+      to: z.string().describe("End date ISO (e.g. 2026-03-31)"),
+    },
+    async (args) => toContent(await run("spendesk_get_purchase_orders_and_payables_export", args))
+  );
+
   mcp.tool(
     "spendesk_get_wallet_loads",
     "Get wallet loads (card top-ups, etc.). Use 'filters' to pass any API query parameters.",
@@ -505,7 +635,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders —————————————————————————————————————————————————──────
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders list. Supports dedicated parameters (status, state, supplierId, userId, from/to dates, createdFrom/createdTo, updatedFrom/updatedTo, ids) and 'filters' for any additional API query parameters.",
+    "Get purchase orders list. Supports status, state, supplierId, userId, ids, and date filters: use 'from' or 'createdFrom' for creation date from (sent as 'from'), 'to' or 'createdTo' for creation date to (sent as 'to'); updatedFrom/updatedTo are sent as updated_from/updated_to. Use 'filters' for any other API query parameters.",
     purchaseOrdersSchema,
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );
