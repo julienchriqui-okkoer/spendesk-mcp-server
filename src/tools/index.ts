@@ -59,6 +59,41 @@ const purchaseOrdersSchema = {
   filters: filtersSchema, // Keep filters for any additional parameters
 };
 
+const dateYMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
+
+// Public API payables snapshot query (publicPayableQuerySchema)
+const payablesSnapshotSchema = {
+  bookkeepingStatus: z
+    .array(z.string())
+    .optional()
+    .describe("Filter payables by bookkeeping status(es)."),
+  exportedAfter: z
+    .string()
+    .optional()
+    .describe("Returns payables exported after the given date (ISO 8601)."),
+  ids: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe("List of payable IDs to filter by."),
+  sortBy: z
+    .enum(["payableDate"])
+    .optional()
+    .default("payableDate")
+    .describe("Sort field (default: payableDate)."),
+  sortOrder: z
+    .enum(["asc", "desc"])
+    .optional()
+    .default("desc")
+    .describe("Sort order (default: desc)."),
+  fromPayableDate: dateYMD.optional().describe("Period start date (YYYY-MM-DD). Requires toPayableDate; max 31 days range."),
+  toPayableDate: dateYMD.optional().describe("Period end date (YYYY-MM-DD). Required when fromPayableDate is set."),
+  createdFrom: dateYMD.optional().describe("Period start for creation date (YYYY-MM-DD)."),
+  createdTo: dateYMD.optional().describe("Period end for creation date (YYYY-MM-DD), end of day (T23:59:59)."),
+  updatedFrom: dateYMD.optional().describe("Returns payables modified after this date (YYYY-MM-DD)."),
+  filters: filtersSchema,
+  payload: z.record(z.unknown()).optional().describe("Optional extra body fields (legacy: { from, to } are mapped to fromPayableDate, toPayableDate)."),
+};
+
 function paginate(args: { page?: number; perPage?: number }): Record<string, string> {
   const p: Record<string, string> = {};
   if (args.page != null) p.page = String(args.page);
@@ -189,6 +224,56 @@ function buildPurchaseOrdersQueryParams(args: {
   return params;
 }
 
+/**
+ * Build request body for create payables snapshot (Public API query schema).
+ * Sends a "query" object with only defined filter fields.
+ */
+function buildPayablesSnapshotPayload(args: {
+  bookkeepingStatus?: string[];
+  exportedAfter?: string;
+  ids?: string | string[];
+  sortBy?: "payableDate";
+  sortOrder?: "asc" | "desc";
+  fromPayableDate?: string;
+  toPayableDate?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  updatedFrom?: string;
+  filters?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+}): Record<string, unknown> {
+  const query: Record<string, unknown> = {};
+  if (args.bookkeepingStatus != null && args.bookkeepingStatus.length > 0) {
+    query.bookkeepingStatus = args.bookkeepingStatus;
+  }
+  if (args.exportedAfter != null) query.exportedAfter = args.exportedAfter;
+  if (args.ids != null) {
+    query.ids = Array.isArray(args.ids) ? args.ids : [args.ids];
+  }
+  if (args.sortBy != null) query.sortBy = args.sortBy;
+  if (args.sortOrder != null) query.sortOrder = args.sortOrder;
+  if (args.fromPayableDate != null) query.fromPayableDate = args.fromPayableDate;
+  if (args.toPayableDate != null) query.toPayableDate = args.toPayableDate;
+  if (args.createdFrom != null) query.createdFrom = args.createdFrom;
+  if (args.createdTo != null) query.createdTo = args.createdTo;
+  if (args.updatedFrom != null) query.updatedFrom = args.updatedFrom;
+  if (args.filters) {
+    for (const [key, value] of Object.entries(args.filters)) {
+      if (value != null && query[key] === undefined) query[key] = value;
+    }
+  }
+  // Legacy payload: map from/to to fromPayableDate/toPayableDate and merge other keys
+  if (args.payload && typeof args.payload === "object") {
+    if (args.payload.from != null && query.fromPayableDate === undefined) query.fromPayableDate = args.payload.from;
+    if (args.payload.to != null && query.toPayableDate === undefined) query.toPayableDate = args.payload.to;
+    if (query.fromPayableDate != null && query.toPayableDate === undefined) query.toPayableDate = query.fromPayableDate;
+    for (const [key, value] of Object.entries(args.payload)) {
+      if (key !== "from" && key !== "to" && value != null && query[key] === undefined) query[key] = value;
+    }
+  }
+  return Object.keys(query).length > 0 ? { query } : {};
+}
+
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   const run = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     switch (name) {
@@ -215,8 +300,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           SpendeskPaths.getBankFees,
           buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
         );
-      case "spendesk_create_payables_snapshot":
-        return api.post(SpendeskPaths.createPayablesSnapshot, args.payload);
+      case "spendesk_create_payables_snapshot": {
+        const body = buildPayablesSnapshotPayload(args as Parameters<typeof buildPayablesSnapshotPayload>[0]);
+        return api.post(SpendeskPaths.createPayablesSnapshot, body);
+      }
       case "spendesk_get_payables_snapshot":
         return api.get(SpendeskPaths.getPayablesSnapshot(args.snapshotId as string));
       case "spendesk_get_payable":
@@ -435,8 +522,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   );
   mcp.tool(
     "spendesk_create_payables_snapshot",
-    "Create a snapshot of payables (invoices, credit notes, etc.).",
-    { payload: z.record(z.unknown()).describe("Snapshot request body (filters, etc.)") },
+    "Create a snapshot of payables (invoices, credit notes, etc.). Uses Public API filters: bookkeepingStatus, exportedAfter, ids, sortBy, sortOrder, fromPayableDate (requires toPayableDate, max 31 days), toPayableDate, createdFrom, createdTo, updatedFrom. Use 'filters' for any extra query params.",
+    payablesSnapshotSchema,
     async (args) => toContent(await run("spendesk_create_payables_snapshot", args))
   );
   mcp.tool(

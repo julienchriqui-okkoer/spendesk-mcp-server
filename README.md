@@ -310,7 +310,7 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_get_settlements` – Liste des settlements (avec filtres via `filters`)
 - `spendesk_update_settlement_state` – Mise à jour de l'état d'un settlement
 - `spendesk_get_bank_fees` – Frais bancaires (avec filtres via `filters`)
-- `spendesk_create_payables_snapshot` / `spendesk_get_payables_snapshot` – Snapshots de payables
+- `spendesk_create_payables_snapshot` / `spendesk_get_payables_snapshot` – Snapshots de payables (filtres Public API : bookkeepingStatus, exportedAfter, ids, fromPayableDate/toPayableDate, createdFrom/createdTo, updatedFrom, sortBy, sortOrder)
 - `spendesk_get_payable` / `spendesk_get_payable_attachments` – Détail payable et pièces jointes
 - `spendesk_update_payable_bookkeeping` – Statut comptable d'un payable (sync ERP)
 - **Report (réponses clés en main)** : `spendesk_get_spend_dashboard` – Dashboard spend (répartition par cost center / catégorie / compte de charge) ; `spendesk_get_top_suppliers_by_spend` – Top N fournisseurs par spend avec payables/settlements ; `spendesk_get_purchase_orders_and_payables_export` – Export POs + payables d'une période, liés par fournisseur
