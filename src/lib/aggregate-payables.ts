@@ -75,8 +75,8 @@ export async function fetchPayablesForPeriod(
 
   try {
     const snapshotPayload =
-      from && to ? { query: { fromPayableDate: from, toPayableDate: to } } : {};
-    const createRes = await api.post<{ id?: string; data?: { id?: string }; snapshotId?: string }>(
+      from && to ? { fromPayableDate: from, toPayableDate: to } : {};
+    const createRes = await api.post<{ id?: string; data?: { id?: string }; snapshotId?: string; key?: string }>(
       SpendeskPaths.createPayablesSnapshot,
       snapshotPayload
     );
@@ -84,7 +84,8 @@ export async function fetchPayablesForPeriod(
     const snapshotId =
       (createRes as Record<string, unknown>)?.id ??
       data?.id ??
-      (createRes as Record<string, unknown>)?.snapshotId;
+      (createRes as Record<string, unknown>)?.snapshotId ??
+      (createRes as Record<string, unknown>)?.key;
     if (snapshotId) {
       const snapshotRes = await api.get<{ payables?: unknown[]; data?: unknown[] | { payables?: unknown[] } }>(
         SpendeskPaths.getPayablesSnapshot(String(snapshotId))

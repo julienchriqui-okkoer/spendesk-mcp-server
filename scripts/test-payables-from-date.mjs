@@ -189,7 +189,11 @@ async function main() {
     let snapshotId = null;
     try {
       const createData = JSON.parse(createRes?.result?.content?.[0]?.text ?? "{}");
-      snapshotId = createData.id ?? createData.data?.id ?? createData.snapshotId;
+      snapshotId =
+        createData.id ??
+        createData.data?.id ??
+        createData.snapshotId ??
+        createData.key;
     } catch {}
     if (!snapshotId) {
       console.error("Snapshot sans ID. Réponse:", JSON.stringify(createRes).slice(0, 400));
