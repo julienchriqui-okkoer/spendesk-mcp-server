@@ -225,8 +225,10 @@ function buildPurchaseOrdersQueryParams(args: {
 }
 
 /**
- * Build request body for create payables snapshot (Public API query schema).
- * Sends a "query" object with only defined filter fields.
+ * Build request body for create payables snapshot (Public API).
+ * Always returns { query } so the API receives application/json with the query wrapper.
+ * Tool params (fromPayableDate, toPayableDate, ids, etc.) are mapped inside query.
+ * The optional "payload" param is merged *inside* query (never replaces the wrapper).
  */
 function buildPayablesSnapshotPayload(args: {
   bookkeepingStatus?: string[];
@@ -241,7 +243,7 @@ function buildPayablesSnapshotPayload(args: {
   updatedFrom?: string;
   filters?: Record<string, unknown>;
   payload?: Record<string, unknown>;
-}): Record<string, unknown> {
+}): { query: Record<string, unknown> } {
   const query: Record<string, unknown> = {};
   if (args.bookkeepingStatus != null && args.bookkeepingStatus.length > 0) {
     query.bookkeepingStatus = args.bookkeepingStatus;
@@ -262,16 +264,22 @@ function buildPayablesSnapshotPayload(args: {
       if (value != null && query[key] === undefined) query[key] = value;
     }
   }
-  // Legacy payload: map from/to to fromPayableDate/toPayableDate and merge other keys
+  // payload is merged *inside* query (never replaces the query wrapper)
   if (args.payload && typeof args.payload === "object") {
+    if (args.payload.query != null && typeof args.payload.query === "object" && !Array.isArray(args.payload.query)) {
+      for (const [key, value] of Object.entries(args.payload.query as Record<string, unknown>)) {
+        if (value != null && query[key] === undefined) query[key] = value;
+      }
+    }
     if (args.payload.from != null && query.fromPayableDate === undefined) query.fromPayableDate = args.payload.from;
     if (args.payload.to != null && query.toPayableDate === undefined) query.toPayableDate = args.payload.to;
     if (query.fromPayableDate != null && query.toPayableDate === undefined) query.toPayableDate = query.fromPayableDate;
     for (const [key, value] of Object.entries(args.payload)) {
-      if (key !== "from" && key !== "to" && value != null && query[key] === undefined) query[key] = value;
+      if (key === "query" || key === "from" || key === "to") continue;
+      if (value != null && query[key] === undefined) query[key] = value;
     }
   }
-  return Object.keys(query).length > 0 ? { query } : {};
+  return { query };
 }
 
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
