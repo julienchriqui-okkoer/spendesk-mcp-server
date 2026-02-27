@@ -302,6 +302,26 @@ En cas de succès : `✓ MCP HTTP test passed.`
 
 Sans `X_CLIENT_TOKEN`, le script utilise le token fallback (`SPENDESK_API_TOKEN`) si le serveur en est configuré.
 
+#### Tester les outils composites (analyse spend, bookkeeping, AP aging, cash flow)
+
+Un script appelle les 5 outils composites pour vérifier qu’ils répondent correctement :
+
+```bash
+# 1. Démarrer le serveur (dans un premier terminal)
+npm run start:http
+
+# 2. Dans un second terminal (le .env doit contenir SPENDESK_API_TOKEN, ou utilise X_CLIENT_TOKEN)
+node scripts/test-composite-tools.mjs
+```
+
+Le script appelle successivement : `spendesk_analyze_spend`, `spendesk_get_bookkeeping_pipeline`, `spendesk_get_payment_status`, `spendesk_get_ap_aging`, `spendesk_get_cash_flow_forecast` sur une période exemple (janvier 2026). En cas d’erreur (token, 404, timeout snapshot), le message s’affiche pour chaque outil.
+
+Pour tester les payables snapshot et la pagination :
+
+```bash
+FROM_DATE=2026-02-26 node scripts/test-payables-from-date.mjs
+```
+
 ## Outils (Tools)
 
 Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :

@@ -12,6 +12,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { SpendeskClient } from "./spendesk-api/client.js";
+import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
@@ -21,20 +22,51 @@ function getApiToken(): string | null {
   return process.env.SPENDESK_API_TOKEN || null;
 }
 
+function getRefreshToken(): string | null {
+  return process.env.SPENDESK_REFRESH_TOKEN || null;
+}
+
+let fallbackTokenManager: TokenManager | null = null;
+
+function getFallbackTokenManager(baseUrl: string): TokenManager | null {
+  const access = getApiToken();
+  const refresh = getRefreshToken();
+  if (!access || !refresh) return null;
+  if (!fallbackTokenManager) {
+    fallbackTokenManager = new TokenManager({
+      baseUrl,
+      refreshToken: refresh,
+      initialAccessToken: access,
+    });
+  }
+  return fallbackTokenManager;
+}
+
 // Extended session store with client token support
 const sessionStore = new SessionStore();
 
 function buildApi(clientToken?: string): SpendeskClient {
-  // Use client token if provided, otherwise fallback to env var
   const apiToken = clientToken || getApiToken();
-  if (!apiToken) {
+  if (!apiToken && !getRefreshToken()) {
     throw new Error(
-      "No Spendesk API token available. Either provide X-Client-Token header or set SPENDESK_API_TOKEN environment variable."
+      "No Spendesk API token available. Either provide X-Client-Token header or set SPENDESK_API_TOKEN (and optionally SPENDESK_REFRESH_TOKEN for OAuth refresh) environment variable."
     );
   }
   const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
-  const baseUrl = process.env.SPENDESK_BASE_URL;
-  return new SpendeskClient({ apiToken, useDemo, baseUrl });
+  const baseUrl =
+    process.env.SPENDESK_BASE_URL ||
+    (useDemo ? "https://beta-sandbox.api.trunk.spendesk.services" : "https://public-api.spendesk.com");
+  const tm = !clientToken ? getFallbackTokenManager(baseUrl) : null;
+  if (tm) {
+    return new SpendeskClient({
+      apiToken: apiToken || "",
+      useDemo,
+      baseUrl,
+      getToken: () => tm.getAccessToken(),
+      on401Refresh: () => tm.refresh(),
+    });
+  }
+  return new SpendeskClient({ apiToken: apiToken!, useDemo, baseUrl });
 }
 
 const PORT = Number(process.env.PORT) || 3000;

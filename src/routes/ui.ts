@@ -73,7 +73,7 @@ async function validateSpendeskToken(token: string): Promise<boolean> {
     const baseUrl = process.env.SPENDESK_BASE_URL;
     const client = new SpendeskClient({ apiToken: token, useDemo, baseUrl });
     // Try a simple endpoint that should be available: /v1/users (with pagination to limit response)
-    await client.get("/v1/users", { page: "1", per_page: "1" });
+    await client.get("/v1/users", { page: "1", perPage: "1" });
     return true;
   } catch (err) {
     // Log error for debugging (but don't expose token)

@@ -8,6 +8,13 @@ import {
   aggregateByChargeAccount,
   aggregateBySupplier,
 } from "../lib/aggregate-payables.js";
+import {
+  analyzeSpend,
+  getBookkeepingPipeline,
+  getPaymentStatus,
+  getApAging,
+  getCashFlowForecast,
+} from "../lib/composite-tools.js";
 import { getApiReference } from "../lib/api-reference.js";
 import { z } from "zod";
 
@@ -341,7 +348,8 @@ function buildPayablesSnapshotPayload(args: {
   }
 
   // Do not forward generic "filters" to the snapshot endpoint: it only accepts the explicit fields above.
-  return body;
+  // API requires all filters nested under "query" (POST /v1/snapshots/payables).
+  return Object.keys(body).length > 0 ? { query: body } : {};
 }
 
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
@@ -566,6 +574,42 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return { period: { from, to }, purchaseOrders, payables: payables.map((p) => p.raw), bySupplier };
       }
 
+      case "spendesk_analyze_spend":
+        return analyzeSpend(api, {
+          from: String(args.from),
+          to: String(args.to),
+          groupBy: args.groupBy as "supplier" | "costCenter" | "analyticalField" | "payableType" | "expenseAccount",
+          analyticalFieldName: args.analyticalFieldName as string | undefined,
+          limit: args.limit != null ? Number(args.limit) : 10,
+          excludeCredits: args.excludeCredits !== false,
+        });
+      case "spendesk_get_bookkeeping_pipeline":
+        return getBookkeepingPipeline(api, {
+          from: String(args.from),
+          to: String(args.to),
+          status: args.status as "created" | "prepared" | "exported" | undefined,
+          includeVatBreakdown: args.includeVatBreakdown === true,
+          includeJournalEntries: args.includeJournalEntries === true,
+        });
+      case "spendesk_get_payment_status":
+        return getPaymentStatus(api, {
+          from: String(args.from),
+          to: String(args.to),
+          status: args.status as "paid" | "unpaid" | "partial" | undefined,
+          currency: args.currency as string | undefined,
+        });
+      case "spendesk_get_ap_aging":
+        return getApAging(api, {
+          asOfDate: args.asOfDate as string | undefined,
+          includeUpcoming: args.includeUpcoming === true,
+        });
+      case "spendesk_get_cash_flow_forecast":
+        return getCashFlowForecast(api, {
+          days: args.days != null ? Number(args.days) : 30,
+          groupBy: (args.groupBy as "day" | "week" | "supplier") ?? "week",
+          asOfDate: args.asOfDate as string | undefined,
+        });
+
       case "spendesk_get_api_reference": {
         const mcpTool = args.mcpTool as string | undefined;
         const path = args.path as string | undefined;
@@ -584,7 +628,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting. Supports pagination (page, perPage default 30 max 100), dedicated parameters (type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids), and 'filters' for any additional API query parameters (camelCase).",
+    "Get settlements list. Useful for ERP sync and reporting. Supports pagination (page, perPage default 30 max 100), dedicated parameters (type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids), and 'filters' for any additional API query parameters (camelCase). Note: for financial analysis and aggregation, prefer spendesk_analyze_spend or other composite tools.",
     settlementsSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
@@ -617,7 +661,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   };
   mcp.tool(
     "spendesk_get_payables_snapshot",
-    "Get a payables snapshot by ID. Supports pagination: page (default 1), perPage (default 30, max 100). Use filters for any extra query params (camelCase).",
+    "Get a payables snapshot by ID. Supports pagination: page (default 1), perPage (default 30, max 100). Use filters for any extra query params (camelCase). Note: for financial analysis prefer spendesk_analyze_spend, spendesk_get_bookkeeping_pipeline, or other composite tools.",
     getPayablesSnapshotSchema,
     async (args) => toContent(await run("spendesk_get_payables_snapshot", args))
   );
@@ -675,6 +719,63 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       to: z.string().describe("End date ISO (e.g. 2026-03-31)"),
     },
     async (args) => toContent(await run("spendesk_get_purchase_orders_and_payables_export", args))
+  );
+
+  // —— Composite tools (financial analysis) —————————————————————————————————
+  mcp.tool(
+    "spendesk_analyze_spend",
+    "Use this to analyze and aggregate spending from Spendesk payables (invoices, expense claims, card purchases) over a time period. Returns totals grouped by supplier, cost center, or analytical dimension. Use for: top 10 suppliers this quarter, spend by department, what did we spend on software?, budget vs actual by cost center. For financial analysis prefer this over low-level list tools.",
+    {
+      from: z.string().describe("Start date ISO 8601 e.g. 2026-01-01"),
+      to: z.string().describe("End date ISO 8601 e.g. 2026-03-31"),
+      groupBy: z.enum(["supplier", "costCenter", "analyticalField", "payableType", "expenseAccount"]).describe("Group results by this dimension"),
+      analyticalFieldName: z.string().optional().describe("Required when groupBy is analyticalField, e.g. Catégorie de dépense"),
+      limit: z.number().int().min(1).max(100).optional().default(10).describe("Number of results to return"),
+      excludeCredits: z.boolean().optional().default(true).describe("Exclude refunds and credit notes"),
+    },
+    async (args) => toContent(await run("spendesk_analyze_spend", args))
+  );
+  mcp.tool(
+    "spendesk_get_bookkeeping_pipeline",
+    "Use this to track the accounting/bookkeeping pipeline in Spendesk. Returns payables filtered by bookkeeping status. Use for: which invoices are not yet exported to accounting?, show me the VAT breakdown by rate, generate a journal entry list, what is pending for month-end close?",
+    {
+      from: z.string().describe("Start date ISO 8601"),
+      to: z.string().describe("End date ISO 8601"),
+      status: z.enum(["created", "prepared", "exported"]).optional().describe("Filter by status; if omitted returns all"),
+      includeVatBreakdown: z.boolean().optional().default(false),
+      includeJournalEntries: z.boolean().optional().default(false),
+    },
+    async (args) => toContent(await run("spendesk_get_bookkeeping_pipeline", args))
+  );
+  mcp.tool(
+    "spendesk_get_payment_status",
+    "Use this to check the payment status of invoices (paid, unpaid, partially paid). Also returns multi-currency exposure. Use for: which invoices are still unpaid?, show me partially paid invoices, what is our USD/GBP exposure this month?, reconcile payments with invoices.",
+    {
+      from: z.string().describe("Start date ISO 8601"),
+      to: z.string().describe("End date ISO 8601"),
+      status: z.enum(["paid", "unpaid", "partial"]).optional().describe("Filter by status"),
+      currency: z.string().optional().describe("Filter by original currency e.g. USD, GBP"),
+    },
+    async (args) => toContent(await run("spendesk_get_payment_status", args))
+  );
+  mcp.tool(
+    "spendesk_get_ap_aging",
+    "Use this for AP aging analysis — shows overdue and upcoming invoice payments. Use for: show me overdue invoices, AP aging report, which suppliers are we most overdue with?, what invoices are 30/60/90 days overdue?, calculate our DPO.",
+    {
+      asOfDate: z.string().optional().describe("Reference date for aging (default: today) YYYY-MM-DD"),
+      includeUpcoming: z.boolean().optional().default(false).describe("Also show not-yet-due unpaid invoices"),
+    },
+    async (args) => toContent(await run("spendesk_get_ap_aging", args))
+  );
+  mcp.tool(
+    "spendesk_get_cash_flow_forecast",
+    "Use this to forecast upcoming cash outflows based on unpaid invoices with known due dates. Use for: what payments are due in the next 30 days?, cash flow forecast for next month, upcoming disbursements by week, treasury planning.",
+    {
+      days: z.number().int().min(1).max(365).optional().default(30).describe("Forecast horizon in days"),
+      groupBy: z.enum(["day", "week", "supplier"]).optional().default("week"),
+      asOfDate: z.string().optional().describe("Reference date (default: today) YYYY-MM-DD"),
+    },
+    async (args) => toContent(await run("spendesk_get_cash_flow_forecast", args))
   );
 
   mcp.tool(
@@ -754,7 +855,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Suppliers & Users ————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_suppliers",
-    "Get suppliers list (vendors). Essential for ERP sync. Supports pagination (page, perPage default 30 max 100) and 'filters' for any API query parameters (camelCase).",
+    "Get suppliers list (vendors). Essential for ERP sync. Supports pagination (page, perPage default 30 max 100) and 'filters' for any API query parameters (camelCase). Note: for financial analysis (e.g. top suppliers by spend), prefer spendesk_analyze_spend.",
     listSchema,
     async (args) => toContent(await run("spendesk_get_suppliers", args))
   );

@@ -75,7 +75,7 @@ export async function fetchPayablesForPeriod(
 
   try {
     const snapshotPayload =
-      from && to ? { fromPayableDate: from, toPayableDate: to } : {};
+      from && to ? { query: { fromPayableDate: from, toPayableDate: to } } : {};
     const createRes = await api.post<{ id?: string; data?: { id?: string }; snapshotId?: string; key?: string }>(
       SpendeskPaths.createPayablesSnapshot,
       snapshotPayload
