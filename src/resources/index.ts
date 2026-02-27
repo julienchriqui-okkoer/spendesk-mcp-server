@@ -1,11 +1,12 @@
 /**
  * MCP Resources for Spendesk data (read-only, for dashboards and context).
- * URIs: spendesk://settlements | suppliers | users | wallet-summary | cost-centers | expense-categories | analytical-fields
+ * URIs: spendesk://settlements | suppliers | users | ... | spendesk://api-reference
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpendeskClient } from "../spendesk-api/client.js";
 import { SpendeskPaths } from "../spendesk-api/endpoints.js";
+import { API_REFERENCE } from "../lib/api-reference.js";
 
 const SPENDESK_URI_PREFIX = "spendesk://";
 
@@ -51,6 +52,9 @@ export function registerResources(mcp: McpServer, api: SpendeskClient): void {
       case "journal-templates":
         data = await api.get(SpendeskPaths.getJournalTemplates);
         break;
+      case "api-reference":
+        data = API_REFERENCE;
+        break;
       default:
         return jsonResource(resourceUri, JSON.stringify({ error: `Unknown resource: ${path}` }, null, 2));
     }
@@ -68,6 +72,7 @@ export function registerResources(mcp: McpServer, api: SpendeskClient): void {
     { name: "Bank fees", uri: `${SPENDESK_URI_PREFIX}bank-fees`, description: "Bank fees" },
     { name: "Wallet loads", uri: `${SPENDESK_URI_PREFIX}wallet-loads`, description: "Wallet loads" },
     { name: "Journal templates", uri: `${SPENDESK_URI_PREFIX}journal-templates`, description: "Accounting journal templates" },
+    { name: "API reference", uri: `${SPENDESK_URI_PREFIX}api-reference`, description: "API reference: endpoints, parameters, data structures (for discovering how to use the API)" },
   ];
 
   for (const r of resources) {

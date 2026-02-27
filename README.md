@@ -337,6 +337,9 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 ### Purchase Orders
 - `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Commandes d'achat (avec filtres via `filters`)
 
+### Découverte / Référence API
+- `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`) pour filtrer sur un seul endpoint.
+
 Les outils qui listent des éléments acceptent une pagination (`page`, `perPage` 1–100) et des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`).
 
 ## Réponses clés en main (Claude / Dust)
@@ -371,6 +374,30 @@ Pour le top 10 fournisseurs par spend, utilise spendesk_get_top_suppliers_by_spe
 Pour l’export des POs et payables d’une période, utilise spendesk_get_purchase_orders_and_payables_export. Présente les POs et payables sous forme de tableaux, avec regroupement par fournisseur si utile.
 ```
 
+### Dépannage : « API Payables 404 » ou « Settlements 400 »
+
+Si Dust ou Claude répond que **l’API Payables retourne 404** ou que **Settlements retourne 400** :
+
+- **404 sur Payables**  
+  L’API Payables (factures / fournisseurs) n’est pas disponible pour ton compte. Causes possibles :
+  - **Plan Spendesk** : Payables est souvent réservé aux offres Premium/Enterprise (module Invoices / Accounts Payable).
+  - **Scopes** : La clé API doit avoir le scope `payable:read` (à activer dans *Paramètres > Intégrations > Gestion d’accès API*).
+  - À vérifier dans l’interface Spendesk (Rapports, factures fournisseurs) : si tu n’as pas accès aux payables dans l’app, l’API les expose pas non plus.
+
+- **400 sur Settlements**  
+  Requête invalide (paramètres ou format). Le serveur envoie désormais les paramètres en **snake_case** (`paid_from`, `exported_after`) comme attendu par l’API. Si l’erreur persiste, vérifier les valeurs passées (dates ISO, pas de paramètres inconnus) ou contacter le support Spendesk.
+
+**Contournement** : tant que Payables n’est pas disponible, les rapports « top fournisseurs par spend » ou « dashboard spend » ne peuvent pas être calculés par le MCP. Tu peux utiliser les rapports Spendesk (Rapports → filtrer sur la période) ou activer le module Payables / les scopes côté Spendesk pour débloquer l’API.
+
+## Découvrir la structure de l’API
+
+Les clients (Claude, Dust, etc.) peuvent **interroger le MCP** pour connaître les endpoints, paramètres et structures de l’API Spendesk exposée :
+
+- **Outil** `spendesk_get_api_reference` : retourne la référence complète (baseUrl, endpoints avec method, path, queryParams, pathParams, bodyParams, mcpTool, responseNote). Paramètres optionnels : `mcpTool` pour un outil donné (ex. `spendesk_get_settlements`), `path` pour filtrer par chemin (ex. `settlements`).
+- **Ressource** `spendesk://api-reference` : même contenu en lecture seule (idéal pour l’injecter en contexte ou pour les clients qui lisent les ressources).
+
+Exemples de questions que l’assistant peut résoudre en appelant l’outil ou en lisant la ressource : « Quels paramètres accepte l’API settlements ? », « Quel endpoint pour lister les payables ? », « Quelle est la structure des endpoints Purchase Orders ? ».
+
 ## Ressources (Resources)
 
 Données en lecture seule, utiles pour alimenter des dashboards ou du contexte :
@@ -387,6 +414,7 @@ Données en lecture seule, utiles pour alimenter des dashboards ou du contexte :
 | `spendesk://bank-fees` | Frais bancaires |
 | `spendesk://wallet-loads` | Recharges wallet |
 | `spendesk://journal-templates` | Modèles de journaux comptables |
+| `spendesk://api-reference` | **Référence API** : endpoints, paramètres, structures (pour découvrir comment utiliser l’API) |
 
 Les ressources renvoient du JSON (UTF-8).
 

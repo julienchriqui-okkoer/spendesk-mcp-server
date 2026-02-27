@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Affiche les 5 derniers fournisseurs via le MCP.
+ * Affiche les 10 derniers fournisseurs via le MCP.
  * Usage: node scripts/list-last-suppliers.mjs
  *       MCP_BASE_URL=https://... node scripts/list-last-suppliers.mjs
  */
@@ -127,16 +127,16 @@ async function main() {
 
   const suppliers = extractSuppliers(listRes);
   const sorted = [...suppliers].sort((a, b) => dateSortKey(b) - dateSortKey(a));
-  const last5 = sorted.slice(0, 5);
+  const last10 = sorted.slice(0, 10);
 
-  console.log("--- 5 derniers fournisseurs ---\n");
-  if (last5.length === 0) {
+  console.log("--- 10 derniers fournisseurs ---\n");
+  if (last10.length === 0) {
     console.log("Aucun fournisseur trouvé.");
     return;
   }
-  console.log(formatTable(last5));
+  console.log(formatTable(last10));
   console.log("\n--- Détail complet ---\n");
-  last5.forEach((s, i) => {
+  last10.forEach((s, i) => {
     console.log(`### Fournisseur ${i + 1} (id: ${s.id ?? "-"})`);
     console.log(JSON.stringify(s, null, 2));
     console.log("");

@@ -8,6 +8,7 @@ import {
   aggregateByChargeAccount,
   aggregateBySupplier,
 } from "../lib/aggregate-payables.js";
+import { getApiReference } from "../lib/api-reference.js";
 import { z } from "zod";
 
 const paginationSchema = {
@@ -95,11 +96,11 @@ function buildSettlementsQueryParams(args: {
 }): Record<string, string> {
   const params = paginate(args);
   
-  // Add dedicated settlement parameters
+  // Add dedicated settlement parameters (API uses snake_case: paid_from, exported_after)
   if (args.type != null) params.type = String(args.type);
   if (args.state != null) params.state = String(args.state);
-  if (args.paidFrom != null) params.paidFrom = String(args.paidFrom);
-  if (args.exportedAfter != null) params.exportedAfter = String(args.exportedAfter);
+  if (args.paidFrom != null) params.paid_from = String(args.paidFrom);
+  if (args.exportedAfter != null) params.exported_after = String(args.exportedAfter);
   
   // Handle ids parameter (can be string or array)
   if (args.ids != null) {
@@ -395,6 +396,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return { period: { from, to }, purchaseOrders, payables: payables.map((p) => p.raw), bySupplier };
       }
 
+      case "spendesk_get_api_reference": {
+        const mcpTool = args.mcpTool as string | undefined;
+        const path = args.path as string | undefined;
+        return getApiReference(mcpTool ? { mcpTool } : path ? { path } : undefined);
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -644,5 +651,16 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     "Create a purchase order.",
     { payload: z.record(z.unknown()).describe("PO body") },
     async (args) => toContent(await run("spendesk_create_purchase_order", args))
+  );
+
+  // —— API reference (discovery) —————————————————————————————————────────——
+  mcp.tool(
+    "spendesk_get_api_reference",
+    "Get the API reference: list of endpoints, HTTP methods, paths, parameters (query, path, body), and MCP tool names. Use when the user asks about API structure, available endpoints, parameters for a given endpoint, or how to use the Spendesk API. Optional: filter by mcpTool (e.g. spendesk_get_settlements) or path (e.g. settlements) to get only that endpoint.",
+    {
+      mcpTool: z.string().optional().describe("Filter to the endpoint exposed by this MCP tool (e.g. spendesk_get_settlements)"),
+      path: z.string().optional().describe("Filter to endpoints whose path contains this string (e.g. settlements, payables)"),
+    },
+    async (args) => toContent(await run("spendesk_get_api_reference", args))
   );
 }
