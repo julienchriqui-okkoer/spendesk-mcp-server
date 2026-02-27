@@ -31,6 +31,10 @@ const settlementsSchema = {
   ...paginationSchema,
   type: z.string().optional().describe("Filter settlements by type"),
   state: z.string().optional().describe("Filter settlements by state"),
+  paidFrom: z
+    .string()
+    .optional()
+    .describe("Filter settlements paid from this date (ISO 8601 format, bank account filter)"),
   clearedFrom: z.string().optional().describe("Filter settlements cleared from this date (ISO 8601 format)"),
   clearedTo: z.string().optional().describe("Filter settlements cleared until this date (ISO 8601 format)"),
   exportedAfter: z.string().optional().describe("Filter settlements exported after this date (ISO 8601 format)"),
@@ -90,6 +94,7 @@ function buildSettlementsQueryParams(args: {
   perPage?: number;
   type?: string;
   state?: string;
+  paidFrom?: string;
   clearedFrom?: string;
   clearedTo?: string;
   exportedAfter?: string;
@@ -98,12 +103,13 @@ function buildSettlementsQueryParams(args: {
 }): Record<string, string> {
   const params = paginate(args);
   
-  // Add dedicated settlement parameters (API uses snake_case: cleared_from, cleared_to, exported_after)
+  // Add dedicated settlement parameters (sent to the API in camelCase)
   if (args.type != null) params.type = String(args.type);
   if (args.state != null) params.state = String(args.state);
-  if (args.clearedFrom != null) params.cleared_from = String(args.clearedFrom);
-  if (args.clearedTo != null) params.cleared_to = String(args.clearedTo);
-  if (args.exportedAfter != null) params.exported_after = String(args.exportedAfter);
+  if (args.paidFrom != null) params.paidFrom = String(args.paidFrom);
+  if (args.clearedFrom != null) params.clearedFrom = String(args.clearedFrom);
+  if (args.clearedTo != null) params.clearedTo = String(args.clearedTo);
+  if (args.exportedAfter != null) params.exportedAfter = String(args.exportedAfter);
   
   // Handle ids parameter (can be string or array)
   if (args.ids != null) {
@@ -150,28 +156,19 @@ function buildPurchaseOrdersQueryParams(args: {
 }): Record<string, string> {
   const params = paginate(args);
 
+  // All query parameters are sent to the API in camelCase, matching the MCP tool argument names.
   if (args.status != null) params.status = String(args.status);
   if (args.state != null) params.state = String(args.state);
-  if (args.supplierId != null) params.supplier_id = String(args.supplierId);
-  if (args.userId != null) params.user_id = String(args.userId);
+  if (args.supplierId != null) params.supplierId = String(args.supplierId);
+  if (args.userId != null) params.userId = String(args.userId);
 
-  // Creation date: Try both "from"/"to" and "created_from"/"created_to" since API might expect snake_case.
-  // Accept from/to and createdFrom/createdTo in the tool, map to API param names.
-  const fromDate = args.from ?? args.createdFrom;
-  const toDate = args.to ?? args.createdTo;
-  if (fromDate != null) {
-    // Try created_from first (snake_case, aligned with per_page, supplier_id, etc.)
-    params.created_from = String(fromDate);
-    // Also send "from" as fallback in case API expects that
-    params.from = String(fromDate);
-  }
-  if (toDate != null) {
-    params.created_to = String(toDate);
-    params.to = String(toDate);
-  }
-
-  if (args.updatedFrom != null) params.updated_from = String(args.updatedFrom);
-  if (args.updatedTo != null) params.updated_to = String(args.updatedTo);
+  // Date filters are also sent in camelCase
+  if (args.from != null) params.from = String(args.from);
+  if (args.to != null) params.to = String(args.to);
+  if (args.createdFrom != null) params.createdFrom = String(args.createdFrom);
+  if (args.createdTo != null) params.createdTo = String(args.createdTo);
+  if (args.updatedFrom != null) params.updatedFrom = String(args.updatedFrom);
+  if (args.updatedTo != null) params.updatedTo = String(args.updatedTo);
 
   if (args.ids != null) {
     if (Array.isArray(args.ids)) {
@@ -203,6 +200,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
             perPage?: number;
             type?: string;
             state?: string;
+            paidFrom?: string;
             clearedFrom?: string;
             clearedTo?: string;
             exportedAfter?: string;
@@ -416,7 +414,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting. Supports dedicated parameters (type, state, clearedFrom, clearedTo, exportedAfter, ids) and 'filters' for any additional API query parameters.",
+    "Get settlements list. Useful for ERP sync and reporting. Supports dedicated parameters (type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids) and 'filters' for any additional API query parameters.",
     settlementsSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
@@ -638,7 +636,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders —————————————————————————————————————————————————──────
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders list. Supports status, state, supplierId, userId, ids, and date filters: use 'from' or 'createdFrom' for creation date from (sent as 'from'), 'to' or 'createdTo' for creation date to (sent as 'to'); updatedFrom/updatedTo are sent as updated_from/updated_to. Use 'filters' for any other API query parameters.",
+    "Get purchase orders list. Supports status, state, supplierId, userId, ids, and date filters (from, to, createdFrom, createdTo, updatedFrom, updatedTo). Use 'filters' for any other API query parameters. All query parameters are sent to the API in camelCase.",
     purchaseOrdersSchema,
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );

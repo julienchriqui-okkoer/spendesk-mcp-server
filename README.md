@@ -384,7 +384,7 @@ Si Dust ou Claude répond que **l’API Payables retourne 404** ou que **Settlem
   - À vérifier dans l’interface Spendesk (Rapports, factures fournisseurs) : si tu n’as pas accès aux payables dans l’app, l’API les expose pas non plus.
 
 - **400 sur Settlements**  
-  Requête invalide (paramètres ou format). Le serveur envoie les paramètres en **snake_case** (`cleared_from`, `cleared_to`, `exported_after`) comme attendu par l’API. Si l’erreur persiste, vérifier les valeurs passées (dates ISO, pas de paramètres inconnus) ou contacter le support Spendesk.
+  Requête invalide (paramètres ou format). Vérifier les valeurs passées (dates ISO, pas de paramètres inconnus) pour les filtres `paidFrom`, `clearedFrom`, `clearedTo`, `exportedAfter`. Si l’erreur persiste, contacter le support Spendesk.
 
 **Contournement** : tant que Payables n’est pas disponible, les rapports « top fournisseurs par spend » ou « dashboard spend » ne peuvent pas être calculés par le MCP. Tu peux utiliser les rapports Spendesk (Rapports → filtrer sur la période) ou activer le module Payables / les scopes côté Spendesk pour débloquer l’API.
 
