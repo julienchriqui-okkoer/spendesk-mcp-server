@@ -121,8 +121,13 @@ export const API_REFERENCE = {
       method: "GET",
       path: "/v1/snapshots/payables/:key",
       mcpTool: "spendesk_get_payables_snapshot",
-      description: "Get a payables snapshot by ID.",
+      description: "Get a payables snapshot by ID. Supports pagination.",
       pathParams: [{ name: "snapshotId", type: "string", required: true, description: "Snapshot ID (key)" }],
+      queryParams: [
+        { name: "page", type: "number", required: false, description: "Page number (1-based), default 1" },
+        { name: "perPage", type: "number", required: false, description: "Items per page (max 100), default 30" },
+        { name: "filters", type: "object", required: false, description: "Additional query params (camelCase)" },
+      ],
     },
     {
       method: "GET",

@@ -94,10 +94,11 @@ const payablesSnapshotSchema = {
   payload: z.record(z.unknown()).optional().describe("Optional extra body fields (legacy: { from, to } are mapped to fromPayableDate, toPayableDate)."),
 };
 
+/** Pagination query params; Spendesk Public API uses camelCase (page, perPage). */
 function paginate(args: { page?: number; perPage?: number }): Record<string, string> {
   const p: Record<string, string> = {};
   if (args.page != null) p.page = String(args.page);
-  if (args.perPage != null) p.per_page = String(args.perPage);
+  if (args.perPage != null) p.perPage = String(args.perPage);
   return p;
 }
 
@@ -165,6 +166,24 @@ function buildSettlementsQueryParams(args: {
     }
   }
   
+  return params;
+}
+
+/**
+ * Build query params for GET /v1/snapshots/payables/:key.
+ * Supports page (1-based), perPage (max 100), and filters merged as camelCase.
+ */
+function buildGetPayablesSnapshotParams(args: {
+  page?: number;
+  perPage?: number;
+  filters?: Record<string, unknown>;
+}): Record<string, string> {
+  const params = paginate(args);
+  if (args.filters) {
+    for (const [key, value] of Object.entries(args.filters)) {
+      if (value != null && params[key] === undefined) params[key] = String(value);
+    }
+  }
   return params;
 }
 
@@ -366,7 +385,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         }
       }
       case "spendesk_get_payables_snapshot":
-        return api.get(SpendeskPaths.getPayablesSnapshot(args.snapshotId as string));
+        return api.get(
+          SpendeskPaths.getPayablesSnapshot(args.snapshotId as string),
+          buildGetPayablesSnapshotParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
+        );
       case "spendesk_get_payable":
         return api.get(SpendeskPaths.getPayableById(args.payableId as string));
       case "spendesk_get_payable_attachments":
@@ -562,7 +584,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting. Supports dedicated parameters (type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids) and 'filters' for any additional API query parameters.",
+    "Get settlements list. Useful for ERP sync and reporting. Supports pagination (page, perPage default 30 max 100), dedicated parameters (type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids), and 'filters' for any additional API query parameters (camelCase).",
     settlementsSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
@@ -587,10 +609,16 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     payablesSnapshotSchema,
     async (args) => toContent(await run("spendesk_create_payables_snapshot", args))
   );
+  const getPayablesSnapshotSchema = {
+    snapshotId: z.string().describe("Snapshot ID (or key returned by create snapshot)."),
+    page: z.number().int().min(1).optional().default(1).describe("Page number (1-based)."),
+    perPage: z.number().int().min(1).max(100).optional().default(30).describe("Items per page (max 100)."),
+    filters: filtersSchema,
+  };
   mcp.tool(
     "spendesk_get_payables_snapshot",
-    "Get a payables snapshot by ID.",
-    { snapshotId: z.string().describe("Snapshot ID") },
+    "Get a payables snapshot by ID. Supports pagination: page (default 1), perPage (default 30, max 100). Use filters for any extra query params (camelCase).",
+    getPayablesSnapshotSchema,
     async (args) => toContent(await run("spendesk_get_payables_snapshot", args))
   );
   mcp.tool(
@@ -726,7 +754,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Suppliers & Users ————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_suppliers",
-    "Get suppliers list (vendors). Essential for ERP sync. Use 'filters' to pass any API query parameters.",
+    "Get suppliers list (vendors). Essential for ERP sync. Supports pagination (page, perPage default 30 max 100) and 'filters' for any API query parameters (camelCase).",
     listSchema,
     async (args) => toContent(await run("spendesk_get_suppliers", args))
   );
@@ -784,7 +812,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders —————————————————————————————————————————————————──────
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders list. Supports status, state, supplierId, userId, ids, and date filters (from, to, createdFrom, createdTo, updatedFrom, updatedTo). Use 'filters' for any other API query parameters. All query parameters are sent to the API in camelCase.",
+    "Get purchase orders list. Supports pagination (page, perPage default 30 max 100), status, state, supplierId, userId, ids, and date filters (from, to, createdFrom, createdTo, updatedFrom, updatedTo). Use 'filters' for any other API query parameters. All query parameters are sent to the API in camelCase.",
     purchaseOrdersSchema,
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );

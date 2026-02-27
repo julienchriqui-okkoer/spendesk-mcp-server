@@ -310,7 +310,7 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_get_settlements` – Liste des settlements (avec filtres via `filters`)
 - `spendesk_update_settlement_state` – Mise à jour de l'état d'un settlement
 - `spendesk_get_bank_fees` – Frais bancaires (avec filtres via `filters`)
-- `spendesk_create_payables_snapshot` / `spendesk_get_payables_snapshot` – Snapshots de payables (filtres Public API : bookkeepingStatus, exportedAfter, ids, fromPayableDate/toPayableDate, createdFrom/createdTo, updatedFrom, sortBy, sortOrder)
+- `spendesk_create_payables_snapshot` / `spendesk_get_payables_snapshot` – Snapshots de payables (création : filtres Public API ; récupération : pagination `page`, `perPage` max 100, `filters` en camelCase)
 - `spendesk_get_payable` / `spendesk_get_payable_attachments` – Détail payable et pièces jointes
 - `spendesk_update_payable_bookkeeping` – Statut comptable d'un payable (sync ERP)
 - **Report (réponses clés en main)** : `spendesk_get_spend_dashboard` – Dashboard spend (répartition par cost center / catégorie / compte de charge) ; `spendesk_get_top_suppliers_by_spend` – Top N fournisseurs par spend avec payables/settlements ; `spendesk_get_purchase_orders_and_payables_export` – Export POs + payables d'une période, liés par fournisseur
@@ -339,7 +339,7 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 ### Découverte / Référence API
 - `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`) pour filtrer sur un seul endpoint.
 
-Les outils qui listent des éléments acceptent une pagination (`page`, `perPage` 1–100) et des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`).
+Les outils qui listent des éléments (settlements, suppliers, purchase orders, bank fees, wallet loads, etc.) acceptent une pagination explicite **`page`** (défaut 1) et **`perPage`** (défaut 30, max 100), envoyée à l’API en camelCase. Ils acceptent aussi des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`). `spendesk_get_payables_snapshot` supporte également `page` et `perPage` pour paginer les payables d’un snapshot (ex. 1 177 payables sur ~40 pages à 30/page).
 
 ## Réponses clés en main (Claude / Dust)
 

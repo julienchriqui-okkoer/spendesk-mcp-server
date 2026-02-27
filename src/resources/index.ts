@@ -23,31 +23,31 @@ export function registerResources(mcp: McpServer, api: SpendeskClient): void {
     let data: unknown;
     switch (path) {
       case "settlements":
-        data = await api.get(SpendeskPaths.getSettlements, { per_page: "50" });
+        data = await api.get(SpendeskPaths.getSettlements, { page: "1", perPage: "50" });
         break;
       case "suppliers":
-        data = await api.get(SpendeskPaths.getSuppliers, { per_page: "100" });
+        data = await api.get(SpendeskPaths.getSuppliers, { page: "1", perPage: "100" });
         break;
       case "users":
-        data = await api.get(SpendeskPaths.getUsers, { per_page: "100" });
+        data = await api.get(SpendeskPaths.getUsers, { page: "1", perPage: "100" });
         break;
       case "wallet-summary":
         data = await api.get(SpendeskPaths.getWalletSummary);
         break;
       case "cost-centers":
-        data = await api.get(SpendeskPaths.getCostCenters, { per_page: "100" });
+        data = await api.get(SpendeskPaths.getCostCenters, { page: "1", perPage: "100" });
         break;
       case "expense-categories":
-        data = await api.get(SpendeskPaths.getExpenseCategories, { per_page: "100" });
+        data = await api.get(SpendeskPaths.getExpenseCategories, { page: "1", perPage: "100" });
         break;
       case "analytical-fields":
         data = await api.get(SpendeskPaths.getAnalyticalFields);
         break;
       case "bank-fees":
-        data = await api.get(SpendeskPaths.getBankFees, { per_page: "50" });
+        data = await api.get(SpendeskPaths.getBankFees, { page: "1", perPage: "50" });
         break;
       case "wallet-loads":
-        data = await api.get(SpendeskPaths.getWalletLoads, { per_page: "50" });
+        data = await api.get(SpendeskPaths.getWalletLoads, { page: "1", perPage: "50" });
         break;
       case "journal-templates":
         data = await api.get(SpendeskPaths.getJournalTemplates);
