@@ -10,13 +10,12 @@ export const SpendeskPaths = {
   getSettlements: `${V1}/settlements`,
   updateSettlementState: (id: string) => `${V1}/settlements/${id}/state`,
   getBankFees: `${V1}/bank-fees`,
-  /** List payables (if supported by API). */
-  getPayables: `${V1}/payables`,
-  createPayablesSnapshot: `${V1}/payables/snapshots`,
-  getPayablesSnapshot: (id: string) => `${V1}/payables/snapshots/${id}`,
+  /** Payables snapshots and details. */
+  createPayablesSnapshot: `${V1}/snapshots/payables`,
+  getPayablesSnapshot: (key: string) => `${V1}/snapshots/payables/${key}`,
   getPayableById: (id: string) => `${V1}/payables/${id}`,
   getPayableAttachments: (id: string) => `${V1}/payables/${id}/attachments`,
-  updatePayableBookkeeping: (id: string) => `${V1}/payables/${id}/bookkeeping-status`,
+  updatePayableBookkeeping: `${V1}/payables/bookkeeping-status`,
   getWalletLoads: `${V1}/wallet-loads`,
   getWalletSummary: `${V1}/wallet/summary`,
 

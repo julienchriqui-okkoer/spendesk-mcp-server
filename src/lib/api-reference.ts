@@ -55,7 +55,20 @@ export const API_REFERENCE = {
         { name: "perPage", type: "number", required: false, description: "Items per page", apiKey: "per_page" },
         { name: "type", type: "string", required: false, description: "Filter by type", apiKey: "type" },
         { name: "state", type: "string", required: false, description: "Filter by state", apiKey: "state" },
-        { name: "paidFrom", type: "string", required: false, description: "Paid from date (ISO 8601)", apiKey: "paid_from" },
+        {
+          name: "clearedFrom",
+          type: "string",
+          required: false,
+          description: "Cleared from date (ISO 8601)",
+          apiKey: "cleared_from",
+        },
+        {
+          name: "clearedTo",
+          type: "string",
+          required: false,
+          description: "Cleared to date (ISO 8601)",
+          apiKey: "cleared_to",
+        },
         { name: "exportedAfter", type: "string", required: false, description: "Exported after date (ISO 8601)", apiKey: "exported_after" },
         { name: "ids", type: "string | string[]", required: false, description: "Settlement ID(s)", apiKey: "ids" },
         { name: "filters", type: "object", required: false, description: "Any other API query params" },
@@ -82,20 +95,8 @@ export const API_REFERENCE = {
       ],
     },
     {
-      method: "GET",
-      path: "/v1/payables",
-      mcpTool: "spendesk_get_payables",
-      description: "List payables (invoices, credit notes). May return 404 if Payables not on plan.",
-      queryParams: [
-        { name: "page", type: "number", required: false, apiKey: "page", description: "Page" },
-        { name: "perPage", type: "number", required: false, apiKey: "per_page", description: "Per page" },
-        { name: "filters", type: "object", required: false, description: "e.g. from, to, state, supplierId" },
-      ],
-      responseNote: "Requires scope payable:read. Response: data or payables array.",
-    },
-    {
       method: "POST",
-      path: "/v1/payables/snapshots",
+      path: "/v1/snapshots/payables",
       mcpTool: "spendesk_create_payables_snapshot",
       description: "Create a payables snapshot (body: e.g. { from, to }).",
       bodyParams: [
@@ -105,10 +106,10 @@ export const API_REFERENCE = {
     },
     {
       method: "GET",
-      path: "/v1/payables/snapshots/:id",
+      path: "/v1/snapshots/payables/:key",
       mcpTool: "spendesk_get_payables_snapshot",
       description: "Get a payables snapshot by ID.",
-      pathParams: [{ name: "snapshotId", type: "string", required: true, description: "Snapshot ID" }],
+      pathParams: [{ name: "snapshotId", type: "string", required: true, description: "Snapshot ID (key)" }],
     },
     {
       method: "GET",
@@ -126,11 +127,13 @@ export const API_REFERENCE = {
     },
     {
       method: "PUT",
-      path: "/v1/payables/:id/bookkeeping-status",
+      path: "/v1/payables/bookkeeping-status",
       mcpTool: "spendesk_update_payable_bookkeeping",
       description: "Update bookkeeping status of a payable.",
-      pathParams: [{ name: "payableId", type: "string", required: true, description: "Payable ID" }],
-      bodyParams: [{ name: "payload", type: "object", required: true, description: "Bookkeeping status fields" }],
+      bodyParams: [
+        { name: "payableId", type: "string", required: true, description: "Payable ID" },
+        { name: "payload", type: "object", required: true, description: "Bookkeeping status fields" },
+      ],
     },
     {
       method: "GET",

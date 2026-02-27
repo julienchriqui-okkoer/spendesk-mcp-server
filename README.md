@@ -311,7 +311,6 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_update_settlement_state` – Mise à jour de l'état d'un settlement
 - `spendesk_get_bank_fees` – Frais bancaires (avec filtres via `filters`)
 - `spendesk_create_payables_snapshot` / `spendesk_get_payables_snapshot` – Snapshots de payables
-- `spendesk_get_payables` – Liste des payables (avec filtres via `filters`)
 - `spendesk_get_payable` / `spendesk_get_payable_attachments` – Détail payable et pièces jointes
 - `spendesk_update_payable_bookkeeping` – Statut comptable d'un payable (sync ERP)
 - **Report (réponses clés en main)** : `spendesk_get_spend_dashboard` – Dashboard spend (répartition par cost center / catégorie / compte de charge) ; `spendesk_get_top_suppliers_by_spend` – Top N fournisseurs par spend avec payables/settlements ; `spendesk_get_purchase_orders_and_payables_export` – Export POs + payables d'une période, liés par fournisseur
@@ -379,13 +378,13 @@ Pour l’export des POs et payables d’une période, utilise spendesk_get_purch
 Si Dust ou Claude répond que **l’API Payables retourne 404** ou que **Settlements retourne 400** :
 
 - **404 sur Payables**  
-  L’API Payables (factures / fournisseurs) n’est pas disponible pour ton compte. Causes possibles :
+  L’API Payables (snapshots / factures fournisseurs) n’est pas disponible pour ton compte. Causes possibles :
   - **Plan Spendesk** : Payables est souvent réservé aux offres Premium/Enterprise (module Invoices / Accounts Payable).
   - **Scopes** : La clé API doit avoir le scope `payable:read` (à activer dans *Paramètres > Intégrations > Gestion d’accès API*).
   - À vérifier dans l’interface Spendesk (Rapports, factures fournisseurs) : si tu n’as pas accès aux payables dans l’app, l’API les expose pas non plus.
 
 - **400 sur Settlements**  
-  Requête invalide (paramètres ou format). Le serveur envoie désormais les paramètres en **snake_case** (`paid_from`, `exported_after`) comme attendu par l’API. Si l’erreur persiste, vérifier les valeurs passées (dates ISO, pas de paramètres inconnus) ou contacter le support Spendesk.
+  Requête invalide (paramètres ou format). Le serveur envoie les paramètres en **snake_case** (`cleared_from`, `cleared_to`, `exported_after`) comme attendu par l’API. Si l’erreur persiste, vérifier les valeurs passées (dates ISO, pas de paramètres inconnus) ou contacter le support Spendesk.
 
 **Contournement** : tant que Payables n’est pas disponible, les rapports « top fournisseurs par spend » ou « dashboard spend » ne peuvent pas être calculés par le MCP. Tu peux utiliser les rapports Spendesk (Rapports → filtrer sur la période) ou activer le module Payables / les scopes côté Spendesk pour débloquer l’API.
 

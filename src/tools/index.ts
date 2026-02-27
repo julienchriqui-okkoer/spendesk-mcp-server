@@ -31,7 +31,8 @@ const settlementsSchema = {
   ...paginationSchema,
   type: z.string().optional().describe("Filter settlements by type"),
   state: z.string().optional().describe("Filter settlements by state"),
-  paidFrom: z.string().optional().describe("Filter settlements paid from this date (ISO 8601 format)"),
+  clearedFrom: z.string().optional().describe("Filter settlements cleared from this date (ISO 8601 format)"),
+  clearedTo: z.string().optional().describe("Filter settlements cleared until this date (ISO 8601 format)"),
   exportedAfter: z.string().optional().describe("Filter settlements exported after this date (ISO 8601 format)"),
   ids: z.union([z.string(), z.array(z.string())]).optional().describe("Filter by settlement ID(s). Can be a single ID string or array of IDs"),
   filters: filtersSchema, // Keep filters for any additional parameters
@@ -89,17 +90,19 @@ function buildSettlementsQueryParams(args: {
   perPage?: number;
   type?: string;
   state?: string;
-  paidFrom?: string;
+  clearedFrom?: string;
+  clearedTo?: string;
   exportedAfter?: string;
   ids?: string | string[];
   filters?: Record<string, unknown>;
 }): Record<string, string> {
   const params = paginate(args);
   
-  // Add dedicated settlement parameters (API uses snake_case: paid_from, exported_after)
+  // Add dedicated settlement parameters (API uses snake_case: cleared_from, cleared_to, exported_after)
   if (args.type != null) params.type = String(args.type);
   if (args.state != null) params.state = String(args.state);
-  if (args.paidFrom != null) params.paid_from = String(args.paidFrom);
+  if (args.clearedFrom != null) params.cleared_from = String(args.clearedFrom);
+  if (args.clearedTo != null) params.cleared_to = String(args.clearedTo);
   if (args.exportedAfter != null) params.exported_after = String(args.exportedAfter);
   
   // Handle ids parameter (can be string or array)
@@ -200,7 +203,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
             perPage?: number;
             type?: string;
             state?: string;
-            paidFrom?: string;
+            clearedFrom?: string;
+            clearedTo?: string;
             exportedAfter?: string;
             ids?: string | string[];
             filters?: Record<string, unknown>;
@@ -213,11 +217,6 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           SpendeskPaths.getBankFees,
           buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
         );
-      case "spendesk_get_payables":
-        return api.get(
-          SpendeskPaths.getPayables,
-          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
-        );
       case "spendesk_create_payables_snapshot":
         return api.post(SpendeskPaths.createPayablesSnapshot, args.payload);
       case "spendesk_get_payables_snapshot":
@@ -227,7 +226,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_get_payable_attachments":
         return api.get(SpendeskPaths.getPayableAttachments(args.payableId as string));
       case "spendesk_update_payable_bookkeeping":
-        return api.put(SpendeskPaths.updatePayableBookkeeping(args.payableId as string), args.payload);
+        return api.put(SpendeskPaths.updatePayableBookkeeping, {
+          payableId: args.payableId,
+          ...(args.payload as Record<string, unknown>),
+        });
       case "spendesk_get_wallet_loads":
         return api.get(
           SpendeskPaths.getWalletLoads,
@@ -414,7 +416,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting. Supports dedicated parameters (type, state, paidFrom, exportedAfter, ids) and 'filters' for any additional API query parameters.",
+    "Get settlements list. Useful for ERP sync and reporting. Supports dedicated parameters (type, state, clearedFrom, clearedTo, exportedAfter, ids) and 'filters' for any additional API query parameters.",
     settlementsSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
@@ -432,12 +434,6 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     "Get bank fees. Useful for accounting and dashboards. Use 'filters' to pass any API query parameters.",
     listSchema,
     async (args) => toContent(await run("spendesk_get_bank_fees", args))
-  );
-  mcp.tool(
-    "spendesk_get_payables",
-    "List payables (invoices, credit notes) with pagination. Use when GET /v1/payables is available. Use 'filters' to pass any API query parameters (dates, statuses, supplier IDs, etc.).",
-    listSchema,
-    async (args) => toContent(await run("spendesk_get_payables", args))
   );
   mcp.tool(
     "spendesk_create_payables_snapshot",

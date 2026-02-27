@@ -64,7 +64,7 @@ function normalizePayable(p: Record<string, unknown>): NormalizedPayable {
 }
 
 /**
- * Fetch all payables for a date range. Tries snapshot first, then paginated GET.
+ * Fetch all payables for a date range using the snapshot endpoints only.
  */
 export async function fetchPayablesForPeriod(
   api: SpendeskClient,
@@ -99,32 +99,18 @@ export async function fetchPayablesForPeriod(
       }
       return { payables: normalized };
     }
-  } catch (err) {
-    const statusCode = (err as { statusCode?: number })?.statusCode;
-    const is404 = statusCode === 404 || String((err as Error)?.message ?? "").includes("404");
-    if (is404) {
-      return { payables: [], error: "Payables API not available (404). Check plan and scopes (payable:read)." };
-    }
-  }
-
-  try {
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const params: Record<string, string> = { page: String(page), per_page: String(PER_PAGE), from, to };
-      const res = await api.get<{ data?: unknown[]; payables?: unknown[] }>(SpendeskPaths.getPayables, params);
-      const list = (res as Record<string, unknown>)?.data ?? (res as Record<string, unknown>)?.payables ?? [];
-      const items = Array.isArray(list) ? list : [];
-      if (items.length === 0) break;
-      for (const p of items) {
-        normalized.push(normalizePayable(p as Record<string, unknown>));
-      }
-      if (items.length < PER_PAGE) break;
-    }
+    return {
+      payables: [],
+      error: "Payables snapshot endpoint did not return a snapshot id.",
+    };
   } catch (err) {
     const statusCode = (err as { statusCode?: number })?.statusCode;
     const is404 = statusCode === 404 || String((err as Error)?.message ?? "").includes("404");
     return {
-      payables: normalized,
-      error: is404 ? "Payables list endpoint not available (404)." : (err as Error)?.message ?? "Failed to fetch payables.",
+      payables: [],
+      error: is404
+        ? "Payables snapshot endpoint not available (404). Check plan and scopes (payable:read)."
+        : (err as Error)?.message ?? "Failed to fetch payables snapshot.",
     };
   }
 
