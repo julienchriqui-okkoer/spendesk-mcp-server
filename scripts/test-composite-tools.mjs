@@ -122,6 +122,7 @@ async function main() {
   } catch (e) {
     console.error("   ✗", e.message);
   }
+  await new Promise((r) => setTimeout(r, 3000)); // pause to reduce 409/429 when running all tools
 
   console.log("\n2) spendesk_get_bookkeeping_pipeline (summary only)");
   try {
@@ -137,6 +138,7 @@ async function main() {
   } catch (e) {
     console.error("   ✗", e.message);
   }
+  await new Promise((r) => setTimeout(r, 3000));
 
   console.log("\n3) spendesk_get_payment_status");
   try {
@@ -150,6 +152,7 @@ async function main() {
   } catch (e) {
     console.error("   ✗", e.message);
   }
+  await new Promise((r) => setTimeout(r, 3000));
 
   console.log("\n4) spendesk_get_ap_aging");
   try {
@@ -162,6 +165,7 @@ async function main() {
   } catch (e) {
     console.error("   ✗", e.message);
   }
+  await new Promise((r) => setTimeout(r, 3000));
 
   console.log("\n5) spendesk_get_cash_flow_forecast (days: 30)");
   try {

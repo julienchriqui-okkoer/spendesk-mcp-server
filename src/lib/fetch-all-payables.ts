@@ -13,6 +13,8 @@ const MAX_WAIT_MS = 90_000;
 const POLL_INTERVAL_MS = 3_000;
 const PAGE_SIZE = 100;
 const MAX_CONCURRENT_PAGES = 6;
+/** Delay between creating each snapshot (ms) to reduce 429 rate limit risk */
+const SNAPSHOT_CREATE_DELAY_MS = 1_200;
 
 export interface Payable {
   id: string;
@@ -85,9 +87,13 @@ type SnapshotCreateResponse = {
   data?: { id?: string };
 };
 
-/** GET /v1/snapshots/payables/:key returns status at root when ready */
+/** GET /v1/snapshots/payables/:key — data is under result.data, pagination under result.meta */
 type SnapshotPageResponse = {
   status?: string;
+  result?: {
+    data?: unknown[] | { payables?: unknown[] };
+    meta?: { pagination?: { total?: number; page?: number; pageSize?: number } };
+  };
   data?: unknown[] | { payables?: unknown[] };
   payables?: unknown[];
   meta?: { pagination?: { total?: number; page?: number; pageSize?: number } };
@@ -146,11 +152,16 @@ async function getSnapshotPage(
     SpendeskPaths.getPayablesSnapshot(snapshotId),
     { page: String(page), perPage: String(perPage) }
   );
+  const r = res as SnapshotPageResponse;
   const list =
-    (res as SnapshotPageResponse).payables ??
-    (res as SnapshotPageResponse).data;
+    r.result?.data ??
+    r.payables ??
+    r.data;
   const arr = Array.isArray(list) ? list : (list as { payables?: unknown[] } | undefined)?.payables ?? [];
-  const total = (res as SnapshotPageResponse).meta?.pagination?.total ?? arr.length;
+  const total =
+    r.result?.meta?.pagination?.total ??
+    r.meta?.pagination?.total ??
+    arr.length;
   return { data: arr, total };
 }
 
@@ -255,9 +266,12 @@ export async function fetchAllPayables(
   const ranges = splitDateRange(from, to, 31);
   let snapshotIds: string[];
   try {
-    snapshotIds = await Promise.all(
-      ranges.map((r) => createSnapshot(api, r.from, r.to))
-    );
+    snapshotIds = [];
+    for (let i = 0; i < ranges.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, SNAPSHOT_CREATE_DELAY_MS));
+      const id = await createSnapshot(api, ranges[i].from, ranges[i].to);
+      snapshotIds.push(id);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to create payables snapshot: ${msg}. Check token and date range.`);

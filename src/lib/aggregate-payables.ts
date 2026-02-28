@@ -87,10 +87,13 @@ export async function fetchPayablesForPeriod(
       (createRes as Record<string, unknown>)?.snapshotId ??
       (createRes as Record<string, unknown>)?.key;
     if (snapshotId) {
-      const snapshotRes = await api.get<{ payables?: unknown[]; data?: unknown[] | { payables?: unknown[] } }>(
-        SpendeskPaths.getPayablesSnapshot(String(snapshotId))
-      );
+      const snapshotRes = await api.get<{
+        result?: { data?: unknown[] };
+        payables?: unknown[];
+        data?: unknown[] | { payables?: unknown[] };
+      }>(SpendeskPaths.getPayablesSnapshot(String(snapshotId)));
       const list =
+        snapshotRes?.result?.data ??
         (snapshotRes as Record<string, unknown>)?.payables ??
         (snapshotRes as Record<string, unknown>)?.data ??
         (snapshotRes as Record<string, { payables?: unknown[] }>)?.data?.payables ??

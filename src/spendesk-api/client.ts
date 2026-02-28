@@ -57,11 +57,16 @@ export class SpendeskClient {
     return this.apiToken;
   }
 
+  private static readonly MAX_429_RETRIES = 3;
+  private static readonly MAX_409_RETRIES = 3;
+
   private async request<T>(
     method: string,
     path: string,
     options?: { body?: unknown; searchParams?: Record<string, string> },
-    isRetry = false
+    is401Retry = false,
+    retry429Count = 0,
+    retry409Count = 0
   ): Promise<T> {
     const url = new URL(
       path.startsWith("http") ? path : `${this.baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`
@@ -103,13 +108,26 @@ export class SpendeskClient {
     } catch {
       data = text as unknown as T;
     }
-    if (res.status === 401 && this.on401Refresh && !isRetry) {
+    if (res.status === 401 && this.on401Refresh && !is401Retry) {
       await this.on401Refresh();
-      return this.request<T>(method, path, options, true);
+      return this.request<T>(method, path, options, true, 0, 0);
     }
-    if (res.status === 429 && !isRetry) {
-      await new Promise((r) => setTimeout(r, 2000));
-      return this.request<T>(method, path, options, true);
+    if (res.status === 429 && retry429Count < SpendeskClient.MAX_429_RETRIES) {
+      const retryAfter = res.headers.get("Retry-After");
+      let waitMs = 2000;
+      if (retryAfter) {
+        const sec = parseInt(retryAfter, 10);
+        if (!Number.isNaN(sec)) waitMs = Math.min(sec * 1000, 60_000);
+      } else {
+        waitMs = 2000 * 2 ** retry429Count;
+      }
+      await new Promise((r) => setTimeout(r, waitMs));
+      return this.request<T>(method, path, options, is401Retry, retry429Count + 1, retry409Count);
+    }
+    if (res.status === 409 && retry409Count < SpendeskClient.MAX_409_RETRIES) {
+      const waitMs = 5000 * 2 ** retry409Count; // 5s, 10s, 20s
+      await new Promise((r) => setTimeout(r, waitMs));
+      return this.request<T>(method, path, options, is401Retry, retry429Count, retry409Count + 1);
     }
     if (!res.ok) {
       throw new SpendeskApiError(
