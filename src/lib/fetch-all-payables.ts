@@ -29,6 +29,7 @@ export interface Payable {
     name: string;
     type: "supplier" | "employee";
     accountPayable?: { generalAccountCode: string };
+    country?: string;
   };
   functionalAmount: number;
   functionalCurrency: string;
@@ -36,6 +37,8 @@ export interface Payable {
   amount: number;
   exchangeRate: number;
   bookkeepingStatus: "created" | "prepared" | "exported";
+  /** Top-level expense account (API may expose here when lineItems are absent or for single-account payables). */
+  expenseAccount?: { code: string; name: string };
   allocations: Array<{
     settlementId: string;
     allocatedAmount: number;
@@ -213,6 +216,7 @@ function normalizePayable(p: unknown): Payable {
         counterparty?.accountPayable != null
           ? { generalAccountCode: String((counterparty.accountPayable as Record<string, unknown>).generalAccountCode ?? "") }
           : undefined,
+      country: counterparty?.country != null ? String(counterparty.country) : undefined,
     },
     functionalAmount: Number(raw.functionalAmount ?? 0),
     functionalCurrency: String(raw.functionalCurrency ?? raw.functional_currency ?? "EUR"),
@@ -220,16 +224,26 @@ function normalizePayable(p: unknown): Payable {
     amount: Number(raw.amount ?? 0),
     exchangeRate: Number(raw.exchangeRate ?? raw.exchange_rate ?? 1),
     bookkeepingStatus: (raw.bookkeepingStatus ?? raw.bookkeeping_status ?? "created") as "created" | "prepared" | "exported",
+    expenseAccount: (() => {
+      const root = (raw.expenseAccount ?? raw.chargeAccount) as Record<string, unknown> | undefined;
+      const firstLi = lineItems[0] as Record<string, unknown> | undefined;
+      const liAcc = (firstLi?.expenseAccount ?? firstLi?.expense_account) as Record<string, unknown> | undefined;
+      const code = String(root?.code ?? liAcc?.code ?? "");
+      const name = String(root?.name ?? liAcc?.name ?? "");
+      return code || name ? { code, name } : undefined;
+    })(),
     allocations: allocations.map((a) => ({
       settlementId: String(a.settlementId ?? a.settlement_id ?? ""),
       allocatedAmount: Number(a.allocatedAmount ?? a.allocated_amount ?? 0),
     })),
     lineItems: lineItems.map((li) => ({
       description: String(li.description ?? ""),
-      expenseAccount: {
-        code: String((li.expenseAccount as Record<string, unknown>)?.code ?? ""),
-        name: String((li.expenseAccount as Record<string, unknown>)?.name ?? ""),
-      },
+      expenseAccount: (() => {
+        const acc = (li.expenseAccount ?? li.expense_account) as Record<string, unknown> | undefined;
+        const code = String(acc?.code ?? "");
+        const name = String(acc?.name ?? "");
+        return { code, name };
+      })(),
       vatAccount: {
         code: String((li.vatAccount as Record<string, unknown>)?.code ?? ""),
         rate: Number((li.vatAccount as Record<string, unknown>)?.rate ?? 0),

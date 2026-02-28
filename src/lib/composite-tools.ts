@@ -20,14 +20,131 @@ function groupByKey<T>(items: T[], keyFn: (item: T) => string): Record<string, T
   return map;
 }
 
+export type AnalyzeSpendFilters = {
+  costCenter?: string;
+  costCenterIds?: string[];
+  supplier?: string;
+  supplierId?: string;
+  payableType?: string;
+  counterpartyType?: "supplier" | "employee";
+  bookkeepingStatus?: "created" | "prepared" | "exported";
+  currency?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  expenseAccount?: string;
+  analyticalFieldName?: string;
+  analyticalFieldValue?: string;
+};
+
+function matchesCostCenter(p: Payable, costCenter: string): boolean {
+  const lower = costCenter.toLowerCase();
+  const topLevel = (p as { costCenterName?: string }).costCenterName?.toLowerCase().includes(lower);
+  const lineItemMatch = (p.lineItems ?? []).some((li) =>
+    li.costCenterName?.toLowerCase().includes(lower)
+  );
+  return Boolean(topLevel || lineItemMatch);
+}
+
+function applyFilters(payables: Payable[], filters: AnalyzeSpendFilters | undefined): Payable[] {
+  if (!filters || Object.keys(filters).length === 0) return payables;
+  return payables.filter((p) => {
+    if (filters.costCenter && !matchesCostCenter(p, filters.costCenter!)) return false;
+    if (filters.costCenterIds?.length) {
+      const topId = (p as { costCenterId?: string }).costCenterId;
+      const lineIds = (p.lineItems ?? []).map((li) => (li as { costCenterId?: string }).costCenterId).filter(Boolean) as string[];
+      const allIds = [topId, ...lineIds].filter(Boolean) as string[];
+      if (allIds.length === 0) return false;
+      if (!allIds.some((id) => filters.costCenterIds!.includes(id))) return false;
+    }
+    if (filters.supplier && !(p.counterparty?.name ?? "").toLowerCase().includes(filters.supplier.toLowerCase())) return false;
+    if (filters.supplierId && p.counterparty?.id !== filters.supplierId) return false;
+    if (filters.payableType && p.type !== filters.payableType) return false;
+    if (filters.counterpartyType && p.counterparty?.type !== filters.counterpartyType) return false;
+    if (filters.bookkeepingStatus && p.bookkeepingStatus !== filters.bookkeepingStatus) return false;
+    if (filters.currency && p.currency !== filters.currency) return false;
+    if (filters.minAmount != null && p.functionalAmount < filters.minAmount) return false;
+    if (filters.maxAmount != null && p.functionalAmount > filters.maxAmount) return false;
+    if (filters.expenseAccount) {
+      const match = (p.lineItems ?? []).some((li) =>
+        (li.expenseAccount?.name ?? "").toLowerCase().includes(filters.expenseAccount!.toLowerCase())
+      );
+      if (!match) return false;
+    }
+    if (filters.analyticalFieldName && filters.analyticalFieldValue) {
+      const match = (p.lineItems ?? []).some((li) =>
+        (li.analyticalProperties ?? []).some(
+          (ap) =>
+            ap.fieldName === filters.analyticalFieldName! &&
+            ap.valueName === filters.analyticalFieldValue!
+        )
+      );
+      if (!match) return false;
+    }
+    return true;
+  });
+}
+
 export type AnalyzeSpendParams = {
   from: string;
   to: string;
-  groupBy: "supplier" | "costCenter" | "analyticalField" | "payableType" | "expenseAccount";
+  groupBy:
+    | "supplier"
+    | "costCenter"
+    | "analyticalField"
+    | "payableType"
+    | "expenseAccount"
+    | "employee"
+    | "currency"
+    | "bookkeepingStatus"
+    | "month"
+    | "paymentStatus"
+    | "country";
   analyticalFieldName?: string;
   limit?: number;
   excludeCredits?: boolean;
+  filters?: AnalyzeSpendFilters;
+  includeDetails?: boolean;
 };
+
+function getPaymentStatusKey(p: Payable): "paid" | "unpaid" | "partial" {
+  const allocated = (p.allocations ?? []).reduce((sum, a) => sum + a.allocatedAmount, 0);
+  if ((p.allocations ?? []).length === 0) return "unpaid";
+  return allocated >= p.functionalAmount ? "paid" : "partial";
+}
+
+function getExpenseAccountKey(account: { code?: string; name?: string } | null | undefined): string {
+  if (!account) return "Unassigned";
+  const code = (account as { code?: string }).code ?? "";
+  const name = (account as { name?: string }).name ?? "";
+  if (code && name) return `${code} - ${name}`.trim();
+  return name || code || "Unassigned";
+}
+
+/** Aggregate by expense account. Uses top-level expenseAccount (API may expose it when lineItems absent), else first lineItem. For split invoices, aggregates at line-item level so totals match by account. */
+function groupByExpenseAccount(filtered: Payable[]): Record<string, { total: number; payables: Payable[] }> {
+  const byKey: Record<string, { total: number; payables: Payable[] }> = {};
+  for (const p of filtered) {
+    const lineItems = p.lineItems ?? [];
+    const topAccount = (p as { expenseAccount?: { code: string; name: string } }).expenseAccount;
+    if (lineItems.length > 0) {
+      for (const li of lineItems) {
+        const account = li.expenseAccount ?? topAccount;
+        const key = getExpenseAccountKey(account);
+        const amount = li.financial?.netAmount ?? p.functionalAmount / lineItems.length;
+        if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
+        byKey[key].total += amount;
+        if (!byKey[key].payables.includes(p)) byKey[key].payables.push(p);
+      }
+    } else {
+      const account = topAccount ?? p.lineItems?.[0]?.expenseAccount;
+      const key = getExpenseAccountKey(account);
+      if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
+      byKey[key].total += p.functionalAmount;
+      byKey[key].payables.push(p);
+    }
+  }
+  return byKey;
+}
 
 export async function analyzeSpend(
   api: SpendeskClient,
@@ -36,10 +153,25 @@ export async function analyzeSpend(
   period: string;
   groupBy: string;
   grandTotalEUR: number;
-  results: Array<{ name: string; totalEUR: number; count: number; sharePercent: number }>;
+  results: Array<{
+    name: string;
+    totalEUR: number;
+    count: number;
+    sharePercent: number;
+    details?: Array<{ id: string; date: string; description: string; amountEUR: number; invoiceNumber?: string }>;
+  }>;
   message?: string;
 }> {
-  const { from, to, groupBy, analyticalFieldName, limit = 10, excludeCredits = true } = params;
+  const {
+    from,
+    to,
+    groupBy,
+    analyticalFieldName,
+    limit = 10,
+    excludeCredits = true,
+    filters,
+    includeDetails = false,
+  } = params;
   const payables = await fetchAllPayables(api, from, to);
   if (payables.length === 0) {
     return {
@@ -50,16 +182,14 @@ export async function analyzeSpend(
       message: "No payables found for this period",
     };
   }
-  const filtered = excludeCredits ? payables.filter((p) => p.functionalAmount > 0) : payables;
+  let filtered = excludeCredits ? payables.filter((p) => p.functionalAmount > 0) : payables;
+  filtered = applyFilters(filtered, filters);
 
   let grouped: Record<string, Payable[]>;
   if (groupBy === "supplier") {
     grouped = groupByKey(filtered, (p) => p.counterparty?.name ?? "Unassigned");
   } else if (groupBy === "costCenter") {
-    grouped = groupByKey(
-      filtered,
-      (p) => p.lineItems?.[0]?.costCenterName ?? "Unassigned"
-    );
+    grouped = groupByKey(filtered, (p) => p.lineItems?.[0]?.costCenterName ?? "Unassigned");
   } else if (groupBy === "analyticalField" && analyticalFieldName) {
     grouped = groupByKey(filtered, (p) => {
       const vals = p.lineItems?.flatMap((li) =>
@@ -70,21 +200,74 @@ export async function analyzeSpend(
       return vals?.[0] ?? "Unassigned";
     });
   } else if (groupBy === "expenseAccount") {
+    const byAccount = groupByExpenseAccount(filtered);
+    const DETAILS_CAP = 10;
+    let expenseResults = Object.entries(byAccount)
+      .map(([name, v]) => {
+        const totalEUR = round2(v.total);
+        const details =
+          includeDetails && v.payables.length > 0
+            ? v.payables.slice(0, DETAILS_CAP).map((p) => ({
+                id: p.id,
+                date: p.payableDate ?? "",
+                description: p.description ?? "",
+                amountEUR: round2(p.functionalAmount),
+                invoiceNumber: p.invoiceNumber,
+              }))
+            : undefined;
+        return { name, totalEUR, count: v.payables.length, sharePercent: 0, details };
+      })
+      .sort((a, b) => b.totalEUR - a.totalEUR)
+      .slice(0, limit);
+    const grandTotalExpense = expenseResults.reduce((sum, r) => sum + r.totalEUR, 0);
+    expenseResults = expenseResults.map((r) => ({
+      ...r,
+      sharePercent: grandTotalExpense > 0 ? round2((r.totalEUR / grandTotalExpense) * 100) : 0,
+    }));
+    return {
+      period: `${from} → ${to}`,
+      groupBy,
+      grandTotalEUR: round2(grandTotalExpense),
+      results: expenseResults,
+    };
+  } else if (groupBy === "employee") {
+    const employees = filtered.filter((p) => p.counterparty?.type === "employee");
+    grouped = groupByKey(employees, (p) => p.counterparty?.name ?? "Unassigned");
+  } else if (groupBy === "currency") {
+    grouped = groupByKey(filtered, (p) => p.currency ?? "Unassigned");
+  } else if (groupBy === "bookkeepingStatus") {
+    grouped = groupByKey(filtered, (p) => p.bookkeepingStatus ?? "unknown");
+  } else if (groupBy === "month") {
+    grouped = groupByKey(filtered, (p) => (p.payableDate ?? "").substring(0, 7) || "Unassigned");
+  } else if (groupBy === "paymentStatus") {
+    grouped = groupByKey(filtered, (p) => getPaymentStatusKey(p));
+  } else if (groupBy === "country") {
     grouped = groupByKey(
       filtered,
-      (p) => p.lineItems?.[0]?.expenseAccount?.name ?? "Unassigned"
+      (p) => (p.counterparty as { country?: string })?.country ?? "Unassigned"
     );
   } else {
     grouped = groupByKey(filtered, (p) => p.type ?? "unknown");
   }
 
+  const DETAILS_CAP = 10;
   let results = Object.entries(grouped)
-    .map(([name, items]) => ({
-      name,
-      totalEUR: round2(items.reduce((sum, p) => sum + p.functionalAmount, 0)),
-      count: items.length,
-      sharePercent: 0,
-    }))
+    .map(([name, items]) => {
+      const totalEUR = round2(items.reduce((sum, p) => sum + p.functionalAmount, 0));
+      const details =
+        includeDetails && items.length > 0
+          ? items
+              .slice(0, DETAILS_CAP)
+              .map((p) => ({
+                id: p.id,
+                date: p.payableDate ?? "",
+                description: p.description ?? "",
+                amountEUR: round2(p.functionalAmount),
+                invoiceNumber: p.invoiceNumber,
+              }))
+          : undefined;
+      return { name, totalEUR, count: items.length, sharePercent: 0, details };
+    })
     .sort((a, b) => b.totalEUR - a.totalEUR)
     .slice(0, limit);
 

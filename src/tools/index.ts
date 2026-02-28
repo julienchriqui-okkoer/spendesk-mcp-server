@@ -10,12 +10,15 @@ import {
 } from "../lib/aggregate-payables.js";
 import {
   analyzeSpend,
+  type AnalyzeSpendFilters,
+  type AnalyzeSpendParams,
   getBookkeepingPipeline,
   getPaymentStatus,
   getApAging,
   getCashFlowForecast,
 } from "../lib/composite-tools.js";
 import { getApiReference } from "../lib/api-reference.js";
+import { fetchAllPages } from "../lib/fetch-all-pages.js";
 import { z } from "zod";
 
 const paginationSchema = {
@@ -355,22 +358,24 @@ function buildPayablesSnapshotPayload(args: {
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   const run = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     switch (name) {
-      case "spendesk_get_settlements":
-        return api.get(
-          SpendeskPaths.getSettlements,
-          buildSettlementsQueryParams(args as {
-            page?: number;
-            perPage?: number;
-            type?: string;
-            state?: string;
-            paidFrom?: string;
-            clearedFrom?: string;
-            clearedTo?: string;
-            exportedAfter?: string;
-            ids?: string | string[];
-            filters?: Record<string, unknown>;
-          })
-        );
+      case "spendesk_get_settlements": {
+        const settlementParams = buildSettlementsQueryParams(args as {
+          page?: number;
+          perPage?: number;
+          type?: string;
+          state?: string;
+          paidFrom?: string;
+          clearedFrom?: string;
+          clearedTo?: string;
+          exportedAfter?: string;
+          ids?: string | string[];
+          filters?: Record<string, unknown>;
+        });
+        const { page: _p1, perPage: _pp1, ...baseSettlement } = settlementParams;
+        return fetchAllPages(api, SpendeskPaths.getSettlements, baseSettlement, {
+          listKey: "settlements",
+        });
+      }
       case "spendesk_update_settlement_state":
         return api.put(SpendeskPaths.updateSettlementState(args.settlementId as string), { state: args.state });
       case "spendesk_get_bank_fees":
@@ -445,11 +450,17 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_get_journal_templates":
         return api.get(SpendeskPaths.getJournalTemplates);
 
-      case "spendesk_get_suppliers":
-        return api.get(
-          SpendeskPaths.getSuppliers,
-          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
-        );
+      case "spendesk_get_suppliers": {
+        const supplierParams = buildQueryParams(args as {
+          page?: number;
+          perPage?: number;
+          filters?: Record<string, unknown>;
+        });
+        const { page: _p2, perPage: _pp2, ...baseSupplier } = supplierParams;
+        return fetchAllPages(api, SpendeskPaths.getSuppliers, baseSupplier, {
+          listKey: "suppliers",
+        });
+      }
       case "spendesk_get_supplier":
         return api.get(SpendeskPaths.getSupplierById(args.supplierId as string));
       case "spendesk_get_users":
@@ -471,26 +482,28 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_delete_webhook":
         return api.delete(SpendeskPaths.deleteWebhook(args.webhookId as string));
 
-      case "spendesk_get_purchase_orders":
-        return api.get(
-          SpendeskPaths.getPurchaseOrders,
-          buildPurchaseOrdersQueryParams(args as {
-            page?: number;
-            perPage?: number;
-            status?: string;
-            state?: string;
-            supplierId?: string;
-            userId?: string;
-            from?: string;
-            to?: string;
-            createdFrom?: string;
-            createdTo?: string;
-            updatedFrom?: string;
-            updatedTo?: string;
-            ids?: string | string[];
-            filters?: Record<string, unknown>;
-          })
-        );
+      case "spendesk_get_purchase_orders": {
+        const poParams = buildPurchaseOrdersQueryParams(args as {
+          page?: number;
+          perPage?: number;
+          status?: string;
+          state?: string;
+          supplierId?: string;
+          userId?: string;
+          from?: string;
+          to?: string;
+          createdFrom?: string;
+          createdTo?: string;
+          updatedFrom?: string;
+          updatedTo?: string;
+          ids?: string | string[];
+          filters?: Record<string, unknown>;
+        });
+        const { page: _p3, perPage: _pp3, ...basePo } = poParams;
+        return fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
+          listKey: "purchaseOrders",
+        });
+      }
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
 
@@ -578,10 +591,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return analyzeSpend(api, {
           from: String(args.from),
           to: String(args.to),
-          groupBy: args.groupBy as "supplier" | "costCenter" | "analyticalField" | "payableType" | "expenseAccount",
+          groupBy: args.groupBy as AnalyzeSpendParams["groupBy"],
           analyticalFieldName: args.analyticalFieldName as string | undefined,
           limit: args.limit != null ? Number(args.limit) : 10,
           excludeCredits: args.excludeCredits !== false,
+          filters: args.filters as AnalyzeSpendFilters | undefined,
+          includeDetails: args.includeDetails === true,
         });
       case "spendesk_get_bookkeeping_pipeline":
         return getBookkeepingPipeline(api, {
@@ -628,7 +643,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Spend Data ———————————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_settlements",
-    "Get settlements list. Useful for ERP sync and reporting. Supports pagination (page, perPage default 30 max 100), dedicated parameters (type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids), and 'filters' for any additional API query parameters (camelCase). Note: for financial analysis and aggregation, prefer spendesk_analyze_spend or other composite tools.",
+    "Get full settlements list (all pages). Uses API pageSize for pagination like composite tools. Params: type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids, and 'filters' (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For financial analysis prefer spendesk_analyze_spend.",
     settlementsSchema,
     async (args) => toContent(await run("spendesk_get_settlements", args))
   );
@@ -722,16 +737,49 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   );
 
   // —— Composite tools (financial analysis) —————————————————————————————————
+  const analyzeSpendFiltersSchema = z
+    .object({
+      costCenter: z.string().optional(),
+      costCenterIds: z.array(z.string()).optional(),
+      supplier: z.string().optional(),
+      supplierId: z.string().optional(),
+      payableType: z.string().optional(),
+      counterpartyType: z.enum(["supplier", "employee"]).optional(),
+      bookkeepingStatus: z.enum(["created", "prepared", "exported"]).optional(),
+      currency: z.string().optional(),
+      minAmount: z.number().optional(),
+      maxAmount: z.number().optional(),
+      expenseAccount: z.string().optional(),
+      analyticalFieldName: z.string().optional(),
+      analyticalFieldValue: z.string().optional(),
+    })
+    .optional();
   mcp.tool(
     "spendesk_analyze_spend",
-    "Use this to analyze and aggregate spending from Spendesk payables (invoices, expense claims, card purchases) over a time period. Returns totals grouped by supplier, cost center, or analytical dimension. Use for: top 10 suppliers this quarter, spend by department, what did we spend on software?, budget vs actual by cost center. For financial analysis prefer this over low-level list tools.",
+    "Analyze and aggregate spending from Spendesk payables over a time period. Supports filtering via filters: costCenter, supplier, supplierId, payableType, counterpartyType (supplier|employee), bookkeepingStatus, currency, minAmount, maxAmount, expenseAccount, analyticalFieldName+analyticalFieldValue. groupBy: supplier | costCenter | analyticalField | payableType | expenseAccount | employee | currency | bookkeepingStatus | month | paymentStatus | country. Examples: top suppliers for Strat Ops → groupBy: supplier, filters: { costCenter: \"Strat Ops\" }; cost centers using AWS → groupBy: costCenter, filters: { supplier: \"AWS\" }; top employees by expenses → groupBy: employee; spend by month → groupBy: month; USD spend → groupBy: currency, filters: { currency: \"USD\" }; not yet in accounting → filters: { bookkeepingStatus: \"created\" }. Use includeDetails: true for up to 10 payables per group.",
     {
       from: z.string().describe("Start date ISO 8601 e.g. 2026-01-01"),
       to: z.string().describe("End date ISO 8601 e.g. 2026-03-31"),
-      groupBy: z.enum(["supplier", "costCenter", "analyticalField", "payableType", "expenseAccount"]).describe("Group results by this dimension"),
-      analyticalFieldName: z.string().optional().describe("Required when groupBy is analyticalField, e.g. Catégorie de dépense"),
+      groupBy: z
+        .enum([
+          "supplier",
+          "costCenter",
+          "analyticalField",
+          "payableType",
+          "expenseAccount",
+          "employee",
+          "currency",
+          "bookkeepingStatus",
+          "month",
+          "paymentStatus",
+          "country",
+        ])
+        .describe("Group results by this dimension"),
+      analyticalFieldName: z.string().optional().describe("Required when groupBy is analyticalField"),
       limit: z.number().int().min(1).max(100).optional().default(10).describe("Number of results to return"),
       excludeCredits: z.boolean().optional().default(true).describe("Exclude refunds and credit notes"),
+      filters: analyzeSpendFiltersSchema.describe("Optional filters applied before aggregation (AND logic)"),
+      includeDetails: z.boolean().optional().default(false).describe("Include up to 10 payables per group in results"),
     },
     async (args) => toContent(await run("spendesk_analyze_spend", args))
   );
@@ -855,7 +903,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Suppliers & Users ————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_suppliers",
-    "Get suppliers list (vendors). Essential for ERP sync. Supports pagination (page, perPage default 30 max 100) and 'filters' for any API query parameters (camelCase). Note: for financial analysis (e.g. top suppliers by spend), prefer spendesk_analyze_spend.",
+    "Get full suppliers list (all pages). Uses API pageSize for pagination like composite tools. Params: 'filters' for any API query (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For top suppliers by spend prefer spendesk_analyze_spend.",
     listSchema,
     async (args) => toContent(await run("spendesk_get_suppliers", args))
   );
@@ -913,7 +961,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders —————————————————————————————————————————————————──────
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders list. Supports pagination (page, perPage default 30 max 100), status, state, supplierId, userId, ids, and date filters (from, to, createdFrom, createdTo, updatedFrom, updatedTo). Use 'filters' for any other API query parameters. All query parameters are sent to the API in camelCase.",
+    "Get full purchase orders list (all pages). Uses API pageSize for pagination like composite tools. Params: status, state, supplierId, userId, ids, from, to, createdFrom, createdTo, updatedFrom, updatedTo, 'filters' (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }.",
     purchaseOrdersSchema,
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );
