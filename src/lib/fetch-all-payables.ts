@@ -6,6 +6,7 @@
  */
 
 import type { SpendeskClient } from "../spendesk-api/client.js";
+import { SpendeskApiError } from "../spendesk-api/client.js";
 import { SpendeskPaths } from "../spendesk-api/endpoints.js";
 
 const MAX_WAIT_MS = 90_000;
@@ -84,7 +85,9 @@ type SnapshotCreateResponse = {
   data?: { id?: string };
 };
 
+/** GET /v1/snapshots/payables/:key returns status at root when ready */
 type SnapshotPageResponse = {
+  status?: string;
   data?: unknown[] | { payables?: unknown[] };
   payables?: unknown[];
   meta?: { pagination?: { total?: number; page?: number; pageSize?: number } };
@@ -108,25 +111,29 @@ async function pollUntilReady(
   snapshotId: string,
   options: { maxWaitMs: number; intervalMs: number }
 ): Promise<void> {
-  const deadline = Date.now() + options.maxWaitMs;
-  while (Date.now() < deadline) {
+  const start = Date.now();
+  const maxWait = options.maxWaitMs;
+  const intervalMs = options.intervalMs;
+  while (Date.now() - start < maxWait) {
     try {
       const res = await api.get<SnapshotPageResponse>(
         SpendeskPaths.getPayablesSnapshot(snapshotId),
         { page: "1", perPage: "1" }
       );
-      const pagination = (res as SnapshotPageResponse).meta?.pagination;
-      const list =
-        (res as SnapshotPageResponse).payables ??
-        (res as SnapshotPageResponse).data;
-      const arr = Array.isArray(list) ? list : (list as { payables?: unknown[] })?.payables;
-      if (pagination !== undefined || (arr && arr.length >= 0)) return;
-    } catch {
-      // snapshot may still be processing
+      if ((res as SnapshotPageResponse).status === "COMPLETE") return;
+    } catch (err) {
+      if (err instanceof SpendeskApiError && err.statusCode === 429) {
+        const retryAfter = typeof err.body === "object" && err.body !== null && "retryAfter" in (err.body as Record<string, unknown>)
+          ? Number((err.body as Record<string, unknown>).retryAfter)
+          : 5;
+        await new Promise((r) => setTimeout(r, Math.min(retryAfter, 30) * 1000));
+        continue;
+      }
+      // snapshot may still be processing (e.g. 202/204) or transient error
     }
-    await new Promise((r) => setTimeout(r, options.intervalMs));
+    await new Promise((r) => setTimeout(r, intervalMs));
   }
-  throw new Error(`Snapshot ${snapshotId} not ready after ${options.maxWaitMs}ms`);
+  throw new Error(`Snapshot ${snapshotId} not ready after ${maxWait}ms`);
 }
 
 async function getSnapshotPage(
