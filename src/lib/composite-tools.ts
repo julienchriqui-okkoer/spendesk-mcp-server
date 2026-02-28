@@ -122,7 +122,7 @@ function getExpenseAccountKey(account: { code?: string; name?: string } | null |
   return name || "Unassigned";
 }
 
-/** Aggregate by expense account. Uses per-line financial.netAmount to avoid double counting on multi-line invoices. Key format: "code - name". */
+/** Aggregate by expense account. Explode payables into line-item rows: use only lineItems[].financial.netAmount per line (no functionalAmount fallback) to avoid double counting. When no line items, use full functionalAmount on top-level expenseAccount. */
 function groupByExpenseAccount(filtered: Payable[]): Record<string, { total: number; payables: Payable[] }> {
   const byKey: Record<string, { total: number; payables: Payable[] }> = {};
   for (const p of filtered) {
@@ -144,9 +144,8 @@ function groupByExpenseAccount(filtered: Payable[]): Record<string, { total: num
         (li.financial as { net_amount?: number })?.net_amount ??
         li.financial?.grossAmount ??
         0;
-      const amount = lineAmount > 0 ? lineAmount : p.functionalAmount / lineItems.length;
       if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
-      byKey[key].total += amount;
+      byKey[key].total += lineAmount;
       if (!byKey[key].payables.includes(p)) byKey[key].payables.push(p);
     }
   }
