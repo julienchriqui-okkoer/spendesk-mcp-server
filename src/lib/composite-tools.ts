@@ -628,3 +628,72 @@ export async function getCashFlowForecast(
     topUpcomingPayments,
   };
 }
+
+export type CashPositionParams = {
+  asOfDate?: string;
+};
+
+export async function getCashPosition(
+  api: SpendeskClient,
+  params: CashPositionParams
+): Promise<{
+  asOfDate: string;
+  overdueEUR: number;
+  dueTodayEUR: number;
+  dueNext7daysEUR: number;
+  dueNext30daysEUR: number;
+  totalOutstandingEUR: number;
+  topUrgentPayments: Array<{
+    supplier: string;
+    dueDate: string;
+    amountEUR: number;
+    daysOverdue: number;
+  }>;
+}> {
+  const asOf = params.asOfDate ?? new Date().toISOString().slice(0, 10);
+  const asOfDate = new Date(asOf);
+  const from = new Date(asOfDate);
+  from.setMonth(from.getMonth() - 6);
+  const to = asOf;
+  const payables = await fetchAllPayables(api, from.toISOString().slice(0, 10), to);
+  const unpaid = payables.filter((p) => paymentStatus(p) !== "paid");
+  const withDue = unpaid
+    .filter((p) => p.invoiceDueDate ?? p.payableDate)
+    .map((p) => {
+      const dueStr = p.invoiceDueDate ?? p.payableDate ?? "";
+      const due = new Date(dueStr);
+      const daysOverdue = Math.floor((asOfDate.getTime() - due.getTime()) / (24 * 60 * 60 * 1000));
+      return { p, dueStr, daysOverdue, amount: p.functionalAmount };
+    });
+
+  const totalOutstandingEUR = round2(withDue.reduce((s, x) => s + x.amount, 0));
+  const overdue = withDue.filter((x) => x.daysOverdue > 0);
+  const dueToday = withDue.filter((x) => x.daysOverdue === 0);
+  const dueNext7 = withDue.filter((x) => x.daysOverdue >= -7 && x.daysOverdue < 0);
+  const dueNext30 = withDue.filter((x) => x.daysOverdue >= -30 && x.daysOverdue < -7);
+
+  const overdueEUR = round2(overdue.reduce((s, x) => s + x.amount, 0));
+  const dueTodayEUR = round2(dueToday.reduce((s, x) => s + x.amount, 0));
+  const dueNext7daysEUR = round2(dueNext7.reduce((s, x) => s + x.amount, 0));
+  const dueNext30daysEUR = round2(dueNext30.reduce((s, x) => s + x.amount, 0));
+
+  const topUrgentPayments = [...overdue, ...dueToday, ...dueNext7]
+    .sort((a, b) => b.daysOverdue - a.daysOverdue || a.dueStr.localeCompare(b.dueStr))
+    .slice(0, 20)
+    .map((x) => ({
+      supplier: x.p.counterparty?.name ?? "",
+      dueDate: x.dueStr,
+      amountEUR: round2(x.amount),
+      daysOverdue: Math.max(0, x.daysOverdue),
+    }));
+
+  return {
+    asOfDate: asOf,
+    overdueEUR,
+    dueTodayEUR,
+    dueNext7daysEUR,
+    dueNext30daysEUR,
+    totalOutstandingEUR,
+    topUrgentPayments,
+  };
+}

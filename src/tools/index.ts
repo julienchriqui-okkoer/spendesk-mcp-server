@@ -16,6 +16,7 @@ import {
   getPaymentStatus,
   getApAging,
   getCashFlowForecast,
+  getCashPosition,
 } from "../lib/composite-tools.js";
 import { getApiReference } from "../lib/api-reference.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
@@ -624,6 +625,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           groupBy: (args.groupBy as "day" | "week" | "supplier") ?? "week",
           asOfDate: args.asOfDate as string | undefined,
         });
+      case "spendesk_get_cash_position":
+        return getCashPosition(api, {
+          asOfDate: args.asOfDate as string | undefined,
+        });
 
       case "spendesk_get_api_reference": {
         const mcpTool = args.mcpTool as string | undefined;
@@ -824,6 +829,14 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       asOfDate: z.string().optional().describe("Reference date (default: today) YYYY-MM-DD"),
     },
     async (args) => toContent(await run("spendesk_get_cash_flow_forecast", args))
+  );
+  mcp.tool(
+    "spendesk_get_cash_position",
+    "Consolidated cash obligations dashboard: overdue, due today, due next 7/30 days, total outstanding EUR, and top urgent payments. Single call for CFO/treasurer view. Combines AP aging and cash flow forecast.",
+    {
+      asOfDate: z.string().optional().describe("Reference date (default: today) YYYY-MM-DD"),
+    },
+    async (args) => toContent(await run("spendesk_get_cash_position", args))
   );
 
   mcp.tool(
