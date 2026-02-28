@@ -229,7 +229,7 @@ function normalizePayable(p: unknown): Payable {
       const firstLi = lineItems[0] as Record<string, unknown> | undefined;
       const liAcc = (firstLi?.expenseAccount ?? firstLi?.expense_account) as Record<string, unknown> | undefined;
       const code = String(root?.code ?? liAcc?.code ?? "");
-      const name = String(root?.name ?? liAcc?.name ?? "");
+      const name = String(root?.name ?? root?.label ?? liAcc?.name ?? liAcc?.label ?? "");
       return code || name ? { code, name } : undefined;
     })(),
     allocations: allocations.map((a) => ({
@@ -241,7 +241,7 @@ function normalizePayable(p: unknown): Payable {
       expenseAccount: (() => {
         const acc = (li.expenseAccount ?? li.expense_account) as Record<string, unknown> | undefined;
         const code = String(acc?.code ?? "");
-        const name = String(acc?.name ?? "");
+        const name = String(acc?.name ?? acc?.label ?? "");
         return { code, name };
       })(),
       vatAccount: {
@@ -249,11 +249,13 @@ function normalizePayable(p: unknown): Payable {
         rate: Number((li.vatAccount as Record<string, unknown>)?.rate ?? 0),
       },
       costCenterName: String(li.costCenterName ?? li.cost_center_name ?? ""),
-      financial: {
-        netAmount: Number((li.financial as Record<string, unknown>)?.netAmount ?? 0),
-        vatAmount: Number((li.financial as Record<string, unknown>)?.vatAmount ?? 0),
-        grossAmount: Number((li.financial as Record<string, unknown>)?.grossAmount ?? 0),
-      },
+      financial: (() => {
+        const fin = li.financial as Record<string, unknown> | undefined;
+        const netAmount = Number(fin?.netAmount ?? fin?.net_amount ?? 0);
+        const vatAmount = Number(fin?.vatAmount ?? fin?.vat_amount ?? 0);
+        const grossAmount = Number(fin?.grossAmount ?? fin?.gross_amount ?? 0);
+        return { netAmount, vatAmount, grossAmount };
+      })(),
       analyticalProperties: ((li.analyticalProperties ?? li.analytical_properties ?? []) as Array<Record<string, unknown>>).map(
         (ap) => ({
           fieldName: String(ap.fieldName ?? ap.field_name ?? ""),

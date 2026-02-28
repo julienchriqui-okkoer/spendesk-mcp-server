@@ -112,35 +112,42 @@ function getPaymentStatusKey(p: Payable): "paid" | "unpaid" | "partial" {
   return allocated >= p.functionalAmount ? "paid" : "partial";
 }
 
+/** Format expense account as "code - name" (e.g. "622800 - Autres honoraires et intermédiaires"). */
 function getExpenseAccountKey(account: { code?: string; name?: string } | null | undefined): string {
   if (!account) return "Unassigned";
   const code = (account as { code?: string }).code ?? "";
   const name = (account as { name?: string }).name ?? "";
   if (code && name) return `${code} - ${name}`.trim();
-  return name || code || "Unassigned";
+  if (code) return `${code} - ${name || "Unassigned"}`.trim();
+  return name || "Unassigned";
 }
 
-/** Aggregate by expense account. Uses top-level expenseAccount (API may expose it when lineItems absent), else first lineItem. For split invoices, aggregates at line-item level so totals match by account. */
+/** Aggregate by expense account. Uses per-line financial.netAmount to avoid double counting on multi-line invoices. Key format: "code - name". */
 function groupByExpenseAccount(filtered: Payable[]): Record<string, { total: number; payables: Payable[] }> {
   const byKey: Record<string, { total: number; payables: Payable[] }> = {};
   for (const p of filtered) {
     const lineItems = p.lineItems ?? [];
     const topAccount = (p as { expenseAccount?: { code: string; name: string } }).expenseAccount;
-    if (lineItems.length > 0) {
-      for (const li of lineItems) {
-        const account = li.expenseAccount ?? topAccount;
-        const key = getExpenseAccountKey(account);
-        const amount = li.financial?.netAmount ?? p.functionalAmount / lineItems.length;
-        if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
-        byKey[key].total += amount;
-        if (!byKey[key].payables.includes(p)) byKey[key].payables.push(p);
-      }
-    } else {
+    if (lineItems.length === 0) {
       const account = topAccount ?? p.lineItems?.[0]?.expenseAccount;
       const key = getExpenseAccountKey(account);
       if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
       byKey[key].total += p.functionalAmount;
       byKey[key].payables.push(p);
+      continue;
+    }
+    for (const li of lineItems) {
+      const account = li.expenseAccount ?? topAccount;
+      const key = getExpenseAccountKey(account);
+      const lineAmount =
+        li.financial?.netAmount ??
+        (li.financial as { net_amount?: number })?.net_amount ??
+        li.financial?.grossAmount ??
+        0;
+      const amount = lineAmount > 0 ? lineAmount : p.functionalAmount / lineItems.length;
+      if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
+      byKey[key].total += amount;
+      if (!byKey[key].payables.includes(p)) byKey[key].payables.push(p);
     }
   }
   return byKey;
