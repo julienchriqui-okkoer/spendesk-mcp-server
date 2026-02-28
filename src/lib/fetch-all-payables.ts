@@ -198,8 +198,36 @@ async function fetchPagesParallel(
 function normalizePayable(p: unknown): Payable {
   const raw = p as Record<string, unknown>;
   const counterparty = (raw.counterparty ?? raw.supplier) as Record<string, unknown> | undefined;
-  const lineItems = (raw.lineItems ?? raw.line_items ?? []) as Array<Record<string, unknown>>;
+  const lineItems = (raw.lineItems ?? raw.line_items ?? raw.lines ?? []) as Array<Record<string, unknown>>;
   const allocations = (raw.allocations ?? []) as Array<Record<string, unknown>>;
+  const normalizedLineItems = lineItems.map((li) => ({
+    description: String(li.description ?? ""),
+    expenseAccount: (() => {
+      const acc = (li.expenseAccount ?? li.expense_account) as Record<string, unknown> | undefined;
+      const code = String(acc?.code ?? "");
+      const name = String(acc?.name ?? acc?.label ?? "");
+      return { code, name };
+    })(),
+    vatAccount: {
+      code: String((li.vatAccount as Record<string, unknown>)?.code ?? ""),
+      rate: Number((li.vatAccount as Record<string, unknown>)?.rate ?? 0),
+    },
+    costCenterName: String(li.costCenterName ?? li.cost_center_name ?? ""),
+    financial: (() => {
+      const fin = li.financial as Record<string, unknown> | undefined;
+      const netAmount = Number(fin?.netAmount ?? fin?.net_amount ?? 0);
+      const vatAmount = Number(fin?.vatAmount ?? fin?.vat_amount ?? 0);
+      const grossAmount = Number(fin?.grossAmount ?? fin?.gross_amount ?? 0);
+      return { netAmount, vatAmount, grossAmount };
+    })(),
+    analyticalProperties: ((li.analyticalProperties ?? li.analytical_properties ?? []) as Array<Record<string, unknown>>).map(
+      (ap) => ({
+        fieldName: String(ap.fieldName ?? ap.field_name ?? ""),
+        valueName: String(ap.valueName ?? ap.value_name ?? ""),
+        functionalAmount: Number(ap.functionalAmount ?? ap.functional_amount ?? 0),
+      })
+    ),
+  }));
   return {
     id: String(raw.id ?? ""),
     type: String(raw.type ?? raw.payableType ?? ""),
@@ -236,35 +264,8 @@ function normalizePayable(p: unknown): Payable {
       settlementId: String(a.settlementId ?? a.settlement_id ?? ""),
       allocatedAmount: Number(a.allocatedAmount ?? a.allocated_amount ?? 0),
     })),
-    lineItems: lineItems.map((li) => ({
-      description: String(li.description ?? ""),
-      expenseAccount: (() => {
-        const acc = (li.expenseAccount ?? li.expense_account) as Record<string, unknown> | undefined;
-        const code = String(acc?.code ?? "");
-        const name = String(acc?.name ?? acc?.label ?? "");
-        return { code, name };
-      })(),
-      vatAccount: {
-        code: String((li.vatAccount as Record<string, unknown>)?.code ?? ""),
-        rate: Number((li.vatAccount as Record<string, unknown>)?.rate ?? 0),
-      },
-      costCenterName: String(li.costCenterName ?? li.cost_center_name ?? ""),
-      financial: (() => {
-        const fin = li.financial as Record<string, unknown> | undefined;
-        const netAmount = Number(fin?.netAmount ?? fin?.net_amount ?? 0);
-        const vatAmount = Number(fin?.vatAmount ?? fin?.vat_amount ?? 0);
-        const grossAmount = Number(fin?.grossAmount ?? fin?.gross_amount ?? 0);
-        return { netAmount, vatAmount, grossAmount };
-      })(),
-      analyticalProperties: ((li.analyticalProperties ?? li.analytical_properties ?? []) as Array<Record<string, unknown>>).map(
-        (ap) => ({
-          fieldName: String(ap.fieldName ?? ap.field_name ?? ""),
-          valueName: String(ap.valueName ?? ap.value_name ?? ""),
-          functionalAmount: Number(ap.functionalAmount ?? ap.functional_amount ?? 0),
-        })
-      ),
-    })),
     ...raw,
+    lineItems: normalizedLineItems,
   };
 }
 

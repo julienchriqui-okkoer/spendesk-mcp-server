@@ -139,11 +139,7 @@ function groupByExpenseAccount(filtered: Payable[]): Record<string, { total: num
     for (const li of lineItems) {
       const account = li.expenseAccount ?? topAccount;
       const key = getExpenseAccountKey(account);
-      const lineAmount =
-        li.financial?.netAmount ??
-        (li.financial as { net_amount?: number })?.net_amount ??
-        li.financial?.grossAmount ??
-        0;
+      const lineAmount = li.financial?.netAmount ?? (li.financial as { net_amount?: number })?.net_amount ?? 0;
       if (!byKey[key]) byKey[key] = { total: 0, payables: [] };
       byKey[key].total += lineAmount;
       if (!byKey[key].payables.includes(p)) byKey[key].payables.push(p);
@@ -208,24 +204,32 @@ export async function analyzeSpend(
   } else if (groupBy === "expenseAccount") {
     const byAccount = groupByExpenseAccount(filtered);
     const DETAILS_CAP = 10;
-    let expenseResults = Object.entries(byAccount)
-      .map(([name, v]) => {
-        const totalEUR = round2(v.total);
-        const details =
-          includeDetails && v.payables.length > 0
-            ? v.payables.slice(0, DETAILS_CAP).map((p) => ({
+    const allExpenseEntries = Object.entries(byAccount).map(([name, v]) => ({
+      name,
+      totalEUR: round2(v.total),
+      count: v.payables.length,
+      payables: v.payables,
+    }));
+    const grandTotalExpense = allExpenseEntries.reduce((sum, r) => sum + r.totalEUR, 0);
+    let expenseResults = allExpenseEntries
+      .sort((a, b) => b.totalEUR - a.totalEUR)
+      .slice(0, limit)
+      .map((r) => ({
+        name: r.name,
+        totalEUR: r.totalEUR,
+        count: r.count,
+        sharePercent: 0,
+        details:
+          includeDetails && r.payables.length > 0
+            ? r.payables.slice(0, DETAILS_CAP).map((p) => ({
                 id: p.id,
                 date: p.payableDate ?? "",
                 description: p.description ?? "",
                 amountEUR: round2(p.functionalAmount),
                 invoiceNumber: p.invoiceNumber,
               }))
-            : undefined;
-        return { name, totalEUR, count: v.payables.length, sharePercent: 0, details };
-      })
-      .sort((a, b) => b.totalEUR - a.totalEUR)
-      .slice(0, limit);
-    const grandTotalExpense = expenseResults.reduce((sum, r) => sum + r.totalEUR, 0);
+            : undefined,
+      }));
     expenseResults = expenseResults.map((r) => ({
       ...r,
       sharePercent: grandTotalExpense > 0 ? round2((r.totalEUR / grandTotalExpense) * 100) : 0,
