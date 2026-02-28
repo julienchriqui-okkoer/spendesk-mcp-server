@@ -147,7 +147,7 @@ async function getSnapshotPage(
   snapshotId: string,
   page: number,
   perPage: number
-): Promise<{ data: unknown[]; total: number }> {
+): Promise<{ data: unknown[]; total: number; pageSize: number }> {
   const res = await api.get<SnapshotPageResponse>(
     SpendeskPaths.getPayablesSnapshot(snapshotId),
     { page: String(page), perPage: String(perPage) }
@@ -162,7 +162,11 @@ async function getSnapshotPage(
     r.result?.meta?.pagination?.total ??
     r.meta?.pagination?.total ??
     arr.length;
-  return { data: arr, total };
+  const pageSize =
+    r.result?.meta?.pagination?.pageSize ??
+    r.meta?.pagination?.pageSize ??
+    perPage;
+  return { data: arr, total, pageSize: Number(pageSize) || perPage };
 }
 
 async function fetchPagesParallel(
@@ -293,8 +297,9 @@ export async function fetchAllPayables(
   );
   const allPages = await Promise.all(
     snapshotIds.map(async (id, i) => {
-      const { data, total } = firstPages[i];
-      const totalPages = Math.ceil(total / PAGE_SIZE);
+      const { data, total, pageSize } = firstPages[i];
+      const actualPageSize = pageSize > 0 ? pageSize : PAGE_SIZE;
+      const totalPages = Math.ceil(total / actualPageSize);
       if (totalPages <= 1) return data;
       const remaining = await fetchPagesParallel(
         api,
