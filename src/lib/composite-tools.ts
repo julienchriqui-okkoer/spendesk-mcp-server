@@ -469,8 +469,9 @@ export async function getApAging(
   const asOf = params.asOfDate ?? new Date().toISOString().slice(0, 10);
   const asOfDate = new Date(asOf);
   const from = new Date(asOfDate);
-  from.setMonth(from.getMonth() - 6);
+  from.setMonth(from.getMonth() - 12);
   const to = asOf;
+  // Bounded to last 12 months to avoid 409 Conflict and snapshot timeout
   const payables = await fetchAllPayables(api, from.toISOString().slice(0, 10), to);
   const unpaid = payables.filter((p) => paymentStatus(p) !== "paid");
   const withDueDate = unpaid.filter((p) => p.invoiceDueDate ?? p.payableDate);
@@ -653,7 +654,7 @@ export async function getCashPosition(
   const asOf = params.asOfDate ?? new Date().toISOString().slice(0, 10);
   const asOfDate = new Date(asOf);
   const from = new Date(asOfDate);
-  from.setMonth(from.getMonth() - 6);
+  from.setMonth(from.getMonth() - 12);
   const to = asOf;
   const payables = await fetchAllPayables(api, from.toISOString().slice(0, 10), to);
   const unpaid = payables.filter((p) => paymentStatus(p) !== "paid");
