@@ -1,0 +1,62 @@
+---
+title: Bookkeeping
+description: spendesk_get_bookkeeping_pipeline and spendesk_get_settlements. Invoices by status, VAT breakdown, journal entries, and bank settlements.
+---
+
+Two tools support bookkeeping and month-end close: the **bookkeeping pipeline** (invoices by accounting status) and **settlements** (bank-level payments).
+
+---
+
+## spendesk_get_bookkeeping_pipeline
+
+Returns payables filtered by bookkeeping status: **created**, **prepared**, or **exported**. Use it to see what is not yet in your accounting system and to get VAT or journal-style data.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `from` | string | Yes | Start date (YYYY-MM-DD). |
+| `to` | string | Yes | End date (YYYY-MM-DD). |
+| `status` | string | No | Filter: `created`, `prepared`, or `exported`. Omit for all. |
+| `includeVatBreakdown` | boolean | No | Add VAT breakdown by rate (default false). |
+| `includeJournalEntries` | boolean | No | Add journal-entry style debit/credit summary (default false). |
+
+**Example prompts**
+
+```
+Which invoices are not yet exported to accounting for February 2026? Show created and prepared.
+```
+
+```
+For January 2026 exported payables, give me the VAT breakdown by rate: net, VAT amount, and gross per rate.
+```
+
+### Journal entry use case (month-end close)
+
+To get data suitable for journal entries (expense accounts and amounts), call the pipeline with `includeJournalEntries: true`. The response includes per-payable or aggregated debit/credit structure.
+
+**Example**
+
+```
+I need a journal-entry style list for all payables exported in January 2026: expense accounts and amounts for month-end close.
+```
+
+### VAT breakdown
+
+Set `includeVatBreakdown: true` to get, per payable or aggregated, the VAT by rate (e.g. 20%, 10%, 0%) with net amount, VAT amount, and gross. Useful for VAT filing or reconciliation.
+
+---
+
+## spendesk_get_settlements
+
+Returns bank-level payment settlements. Use for reconciliation and payment history. Supports pagination and filters.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filters` | object | No | Optional: `type`, `state`, `paidFrom`, `clearedFrom`, `clearedTo`, etc. (camelCase). |
+
+**Example prompt**
+
+```
+List completed settlements for Q1 2026. I need payment date, amount, and state.
+```
+
+Settlements are returned with monetary amounts already in major units (e.g. EUR). Use the filters to narrow by state (e.g. completed) and date range.

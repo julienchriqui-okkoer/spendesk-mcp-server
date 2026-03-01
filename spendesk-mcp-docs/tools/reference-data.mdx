@@ -1,0 +1,90 @@
+---
+title: Reference data
+description: Suppliers, cost centers, analytical fields, and purchase orders. Look up IDs and lists for use in spend analysis and filters.
+---
+
+Reference-data tools return lists and details you can use to filter or interpret other tools (e.g. `spendesk_analyze_spend`). Use them to resolve supplier names to IDs, list cost centers, or get analytical field names and values.
+
+<Tip>
+  Use these tools to look up IDs (supplier, cost center, analytical field) before filtering in **spendesk_analyze_spend** or when building prompts that need a specific entity.
+</Tip>
+
+---
+
+## spendesk_get_suppliers
+
+Returns the full supplier directory. Use for names, IDs, and to filter other reports by supplier.
+
+**Parameters:** Optional pagination (`page`, `perPage`) and filters (e.g. search) if supported by the API.
+
+**Example prompt**
+
+```
+List all suppliers with their names and IDs. I need to pick one for a spend filter.
+```
+
+---
+
+## spendesk_get_supplier
+
+Returns a single supplier by ID. Use after getting an ID from `spendesk_get_suppliers` or from another report.
+
+**Parameters:** `id` (required) — Spendesk supplier ID.
+
+**Example prompt**
+
+```
+Get details for supplier ID abc123: name, and any default account or payment terms.
+```
+
+---
+
+## spendesk_get_cost_centers
+
+Returns the cost center structure. Use to get cost center names or IDs for filtering spend analysis.
+
+**Example prompt**
+
+```
+List our cost centers. I need names and codes to filter spend by cost center.
+```
+
+---
+
+## spendesk_get_analytical_fields
+
+Returns custom analytical fields defined in your Spendesk account (e.g. "Category", "Project"). Use the **field name** in `spendesk_analyze_spend` when `groupBy` is `analyticalField` (with `analyticalFieldName`).
+
+**Example prompt**
+
+```
+What analytical fields do we have? I want to group spend by one of them.
+```
+
+---
+
+## spendesk_get_analytical_values
+
+Returns the values for a given analytical field (by field ID or name, depending on API). Use to see allowed values for filters.
+
+**Example prompt**
+
+```
+What are the possible values for the analytical field "Category"?
+```
+
+---
+
+## spendesk_get_purchase_orders
+
+Returns purchase orders with filters: status, state, supplierId, userId, date range (from, to). Use for PO listing and to cross-check with payables.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filters` | object | No | `status`, `state`, `supplierId`, `userId`, `from`, `to` (camelCase). |
+
+**Example prompt**
+
+```
+List open purchase orders for Q1 2026. Show PO number, supplier, amount, and status.
+```

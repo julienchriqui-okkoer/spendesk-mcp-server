@@ -1,0 +1,42 @@
+---
+title: Tools overview
+description: Summary of composite and core MCP tools for Spendesk. Prefer composite tools for analysis.
+---
+
+The Spendesk MCP exposes **composite tools** (high-level, analysis-ready) and **core API tools** (lower-level, for custom queries). For most Finance use cases, start with the composite tools.
+
+<Tip>
+  Prefer composite tools over raw API tools for spend analysis, AP aging, bookkeeping pipeline, and cash flow. They handle date ranges, pagination, and aggregation for you.
+</Tip>
+
+## Composite tools (6)
+
+| Tool | Description | Best for |
+|------|-------------|----------|
+| `spendesk_analyze_spend` | Aggregate spend by supplier, cost center, month, employee, country, currency, analytical field, payable type, bookkeeping status, payment status. Supports filters (supplier, costCenter, currency, min/max amount, etc.). | Top suppliers, spend by department, budget vs actual, analytical breakdown. |
+| `spendesk_get_bookkeeping_pipeline` | Invoices by bookkeeping status (created / prepared / exported). Optional VAT breakdown and journal-entry style output. | Month-end close, pending export, VAT filing. |
+| `spendesk_get_payment_status` | Paid, unpaid, or partially paid invoices. Optional currency filter. | Unpaid list, reconciliation, FX exposure. |
+| `spendesk_get_ap_aging` | AP aging buckets (0–30, 31–60, 61–90, 90+ days). Optional upcoming (not-yet-due) payables. | Overdue report, DPO, aging analysis. |
+| `spendesk_get_cash_flow_forecast` | Upcoming cash outflows from unpaid invoices. Group by day, week, or supplier. Horizon in days (e.g. 30). | Treasury, disbursement forecast. |
+| `spendesk_get_cash_position` | CFO-style dashboard: overdue, due today, next 7 days, next 30 days, total outstanding, top urgent payments. | Cash obligations at a glance. |
+
+## Core API tools (12)
+
+| Tool | Description | Best for |
+|------|-------------|----------|
+| `spendesk_get_settlements` | Bank-level payment settlements. Filters: type, state, paidFrom, clearedFrom, clearedTo. | Settlement lists, bank reconciliation. |
+| `spendesk_create_payables_snapshot` | Create a snapshot of payables for a date range (max 31 days). | Custom bulk queries. |
+| `spendesk_get_payables_snapshot` | Get payables from a snapshot (paginated, max 100/page). | Paging through snapshot results. |
+| `spendesk_get_payable` | Single payable by ID. | Invoice detail. |
+| `spendesk_get_payable_attachments` | PDF and attachments for a payable. | Download or view attachments. |
+| `spendesk_get_purchase_orders` | PO list. Filters: status, state, supplierId, userId, from, to. | PO listing, filtering by supplier. |
+| `spendesk_get_suppliers` | Full supplier directory. | Lookup supplier IDs and names. |
+| `spendesk_get_supplier` | Single supplier by ID. | Supplier detail. |
+| `spendesk_get_users` | Users and approvers. | User lookup. |
+| `spendesk_get_user` | Single user by ID. | User detail. |
+| `spendesk_get_cost_centers` | Cost center structure. | Cost center lookup for filters. |
+| `spendesk_get_analytical_fields` | Custom analytical fields. | Field names for spend analysis. |
+| `spendesk_get_analytical_values` | Values for a given analytical field. | Values for filters. |
+| `spendesk_get_api_reference` | List available API endpoints and parameters. | Meta: discover API shape. |
+
+For reference data (suppliers, cost centers, analytical fields, POs), use the core tools to look up IDs, then pass those IDs into composite tools (e.g. `spendesk_analyze_spend` filters) when needed.

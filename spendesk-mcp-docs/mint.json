@@ -1,0 +1,38 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Spendesk MCP",
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#1D4ED8",
+    "light": "#1D4ED8",
+    "dark": "#3B82F6"
+  },
+  "topbarLinks": [
+    {
+      "name": "Spendesk",
+      "url": "https://www.spendesk.com"
+    }
+  ],
+  "anchors": [
+    { "name": "Spendesk", "url": "https://www.spendesk.com" },
+    { "name": "API Reference", "url": "https://developer.spendesk.com/reference/general" }
+  ],
+  "navigation": [
+    { "group": "Getting started", "pages": ["introduction", "quickstart", "use-cases"] },
+    {
+      "group": "Tools",
+      "pages": [
+        "tools/overview",
+        "tools/spend-analysis",
+        "tools/accounts-payable",
+        "tools/bookkeeping",
+        "tools/reference-data"
+      ]
+    },
+    { "group": "Support", "pages": ["troubleshooting", "changelog"] }
+  ],
+  "footerSocials": {
+    "twitter": "https://twitter.com/spendesk",
+    "linkedin": "https://www.linkedin.com/company/spendesk"
+  }
+}

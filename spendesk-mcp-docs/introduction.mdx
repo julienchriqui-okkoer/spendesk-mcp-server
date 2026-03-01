@@ -1,0 +1,40 @@
+---
+title: Introduction
+description: Connect Spendesk to your AI assistant. Get spend insights, AP aging, and month-end data in one place—no exports, no spreadsheets.
+---
+
+Spendesk MCP connects your Spendesk data to AI assistants like Claude, Cursor, and ChatGPT. Ask questions in plain language and get answers from your real spend, payables, and vendor data. Built for Finance teams: CFOs, FP&A, controllers, and accountants.
+
+<CardGroup cols={2}>
+  <Card title="Spend analysis" icon="chart-pie">
+    Aggregate spend by supplier, cost center, department, or custom analytical dimensions. Top suppliers, budget vs actual, and spend trends over time.
+  </Card>
+  <Card title="AP & aging" icon="clock">
+    See overdue invoices, payment status (paid / unpaid / partial), and cash flow forecasts. AP aging buckets (0–30, 31–60, 61–90, 90+ days) and DPO.
+  </Card>
+  <Card title="Month-end close" icon="book">
+    Track bookkeeping pipeline: created, prepared, exported. VAT breakdown and journal-entry style data for accounting close.
+  </Card>
+  <Card title="Vendor management" icon="building">
+    Supplier directory, purchase orders, and vendor-level spend. Look up IDs and filter analyses by supplier or PO.
+  </Card>
+</CardGroup>
+
+## Who it's for
+
+| Role | Use case |
+|------|----------|
+| **CFO** | Cash position, overdue AP, cash flow forecast, high-level spend by department or supplier. |
+| **FP&A analyst** | Spend by cost center or analytical field, trends by month, budget vs actual, variance analysis. |
+| **Controller** | Bookkeeping pipeline, invoices not yet exported, VAT breakdown, journal entries for month-end. |
+| **Accounting manager** | Payment status, unpaid invoices, settlements, supplier and PO reference data. |
+
+## How it works
+
+The Spendesk MCP server sits between your AI assistant and the Spendesk Public API. When you ask a question, the assistant picks the right tool (e.g. spend analysis, AP aging), the server calls Spendesk with your credentials, and the response is turned into a clear answer.
+
+<Note>
+  The MCP server is **read-only**. It does not create or approve payments, change invoices, or modify Spendesk data. Use it for reporting, analysis, and lookup.
+</Note>
+
+Authentication is token-based (OAuth 2.0 or API token). You generate a token in Spendesk (Settings → Integrations → API access) and configure it once in your AI client. The server uses that token to read data on your behalf.

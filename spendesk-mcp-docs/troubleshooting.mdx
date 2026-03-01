@@ -1,0 +1,49 @@
+---
+title: Troubleshooting
+description: Fix 401, 403, empty results, 409 snapshot conflicts, large date ranges, and MCP connection issues.
+---
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized — token expired or invalid">
+The server could not authenticate with Spendesk. Common causes:
+
+- **Token expired** — API tokens and OAuth access tokens have a limited lifetime. Regenerate a new token in Spendesk.
+- **Wrong token** — Ensure you are using the token (or client credentials) in the correct place: Bearer header or the custom headers your deployment expects.
+
+**Fix:** In Spendesk, go to **Settings** → **Integrations** → **API access management**. Create a new API token or refresh OAuth client credentials. Update the token in your AI assistant config (Claude, Cursor, ChatGPT, or Dust) and retry. If using client credentials, ensure the Bearer string or headers are correct and not truncated.
+  </Accordion>
+  <Accordion title="403 Forbidden — missing permissions">
+Spendesk accepted the request but denied access. Your token or role does not have the required scopes.
+
+**Required:** The token must have read access to the resources you are querying (e.g. payables, settlements, suppliers, users). In Spendesk, the API token or OAuth app is usually tied to an account with specific permissions.
+
+**Fix:** In Spendesk, check that the user or app that owns the token has at least **read** access to Payables, Settlements, Suppliers, and any other data you need. Regenerate the token after changing permissions if necessary.
+  </Accordion>
+  <Accordion title="No results returned">
+You get an empty list or “no payables” even though you expect data. Possible causes:
+
+1. **Date range** — The period (`from` / `to`) may not contain any payables. Try a wider range or a month you know has data.
+2. **Filters too strict** — If you use `filters` (e.g. supplier, cost center, currency), the combination may match zero payables. Relax or remove filters to confirm data exists.
+3. **Empty data in Spendesk** — For that company and period, there may be no payables, settlements, or suppliers. Verify in the Spendesk UI.
+
+**Fix:** Run a broad query first (e.g. spend by supplier for a full quarter with no filters). If that returns data, narrow the date or filters gradually.
+  </Accordion>
+  <Accordion title="409 Conflict (snapshot)">
+Creating a payables snapshot failed because another snapshot is already in progress or the system is busy.
+
+**Fix:** Wait about 30 seconds and retry. The server and Spendesk API limit how many snapshots can run at once. Avoid triggering several snapshot-based tools in quick succession; space requests by a few seconds if possible.
+  </Accordion>
+  <Accordion title="Date range too large">
+A tool returns an error or times out when you use a very large date range (e.g. a full year).
+
+**Fix:** Break the range into smaller chunks: for example, by quarter (e.g. Q1, Q2, Q3, Q4) or by month. Run the tool once per chunk and combine results in your analysis. The payables snapshot API typically supports up to 31 days per snapshot; composite tools may warn or fail on ranges over 90 days.
+  </Accordion>
+  <Accordion title="MCP server not found in Claude / Cursor">
+The AI assistant does not list or use the Spendesk MCP server. Use this checklist:
+
+1. **URL** — Confirm the MCP server URL is correct (e.g. `https://mcp.spendesk.com/mcp`) and that your deployment is reachable from the machine running the assistant.
+2. **Auth** — Ensure the Bearer token (or client credentials) is set in the right place (headers or auth field) and that the value is not empty or truncated.
+3. **Sync / reload** — In Claude Desktop or Cursor, sync or reload MCP servers so the new config is picked up.
+4. **Restart** — Restart the AI assistant app after changing the MCP config, then try a simple prompt (e.g. “What tools do you have?” or “Top 5 suppliers this quarter”).
+  </Accordion>
+</AccordionGroup>

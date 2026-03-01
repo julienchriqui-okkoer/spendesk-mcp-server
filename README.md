@@ -259,6 +259,10 @@ docker run -p 3000:3000 -e ENCRYPTION_KEY=your_key -e SPENDESK_API_TOKEN=your_to
 - L'URL du serveur MCP : `https://votre-app.onrender.com/mcp` (ou ton domaine + `/mcp`).
 - Le portail : `https://votre-app.onrender.com/ui` (ou ton domaine + `/ui`).
 
+**Déployer la documentation (Mintlify) sur Railway**
+
+La doc (Mintlify) est dans `spendesk-mcp-docs/`. Pour la déployer sur Railway en tant que second service : créer un **nouveau** service Railway à partir du même dépôt, définir **Root Directory** sur `spendesk-mcp-docs`, puis déployer. Le build exécute `npm ci`, le start lance un proxy qui relaie le serveur Mintlify. Générer un domaine dans Settings → Networking. Voir `spendesk-mcp-docs/README.md` pour le détail.
+
 #### Configurer ChatGPT (ou un client MCP Streamable HTTP)
 
 Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Responses API) :

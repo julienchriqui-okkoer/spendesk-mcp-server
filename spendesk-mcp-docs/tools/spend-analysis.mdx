@@ -1,0 +1,111 @@
+---
+title: Spend analysis
+description: spendesk_analyze_spend — aggregate spend by supplier, cost center, month, employee, country, and more. Parameters, filters, and examples.
+---
+
+The **spendesk_analyze_spend** tool aggregates spend from payables (invoices, expenses, card transactions) over a date range and groups results by a dimension of your choice. Use it for top suppliers, spend by department, budget vs actual, or analytical breakdowns.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `from` | string | Yes | Start date (YYYY-MM-DD). |
+| `to` | string | Yes | End date (YYYY-MM-DD). |
+| `groupBy` | string | Yes | Dimension to group by (see values below). |
+| `analyticalFieldName` | string | No | Required when `groupBy` is `analyticalField`. Name of the custom analytical field (e.g. "Catégorie de dépense"). |
+| `limit` | number | No | Max number of groups to return (default 10). |
+| `excludeCredits` | boolean | No | Exclude refunds and credit notes (default true). |
+| `filters` | object | No | Optional filters (see below). |
+| `includeDetails` | boolean | No | Include up to 10 individual payables per group (default false). |
+
+## groupBy values
+
+- `supplier` — by counterparty name
+- `costCenter` — by cost center (first line item or "Unassigned")
+- `analyticalField` — by value of a custom analytical field (requires `analyticalFieldName`)
+- `payableType` — invoice, expense, card
+- `expenseAccount` — by expense account (code and name)
+- `employee` — by employee (for expenses)
+- `currency` — by transaction currency
+- `bookkeepingStatus` — created, prepared, exported
+- `month` — by month
+- `paymentStatus` — paid, unpaid, partial
+- `country` — by counterparty country
+
+## filters object
+
+Optional. All keys are optional. Use to narrow the set of payables before aggregation.
+
+```json
+{
+  "costCenter": "string or pattern",
+  "supplier": "supplier name or ID",
+  "payableType": "invoice | expense | card",
+  "counterpartyType": "supplier | employee",
+  "bookkeepingStatus": "created | prepared | exported",
+  "currency": "EUR | USD | GBP | ...",
+  "minAmount": 0,
+  "maxAmount": 1000000,
+  "expenseAccount": "account code or name",
+  "analyticalFieldName": "field name",
+  "analyticalFieldValue": "field value"
+}
+```
+
+## Example prompts (prompt → parameters)
+
+**Prompt 1**
+
+```
+Top 10 suppliers by spend for Q1 2026.
+```
+
+**Maps to:** `from: "2026-01-01"`, `to: "2026-03-31"`, `groupBy: "supplier"`, `limit: 10`. No filters.
+
+---
+
+**Prompt 2**
+
+```
+Spend by cost center for January 2026, only for invoices, and exclude amounts under 100 EUR.
+```
+
+**Maps to:** `from: "2026-01-01"`, `to: "2026-01-31"`, `groupBy: "costCenter"`, `filters: { "payableType": "invoice", "minAmount": 100 }`.
+
+---
+
+**Prompt 3**
+
+```
+Monthly spend trend for the last 6 months, grouped by month.
+```
+
+**Maps to:** `from` and `to` set to 6 months ago and today, `groupBy: "month"`, `limit` 6 or higher.
+
+## Response format
+
+Example structure (amounts in EUR, already converted from cents):
+
+```json
+{
+  "period": "2026-01-01 → 2026-01-31",
+  "groupBy": "supplier",
+  "grandTotalEUR": 569367.96,
+  "results": [
+    {
+      "name": "Supplier A",
+      "totalEUR": 156245.1,
+      "count": 12,
+      "sharePercent": 27.45
+    },
+    {
+      "name": "Supplier B",
+      "totalEUR": 98000.5,
+      "count": 8,
+      "sharePercent": 17.22
+    }
+  ]
+}
+```
+
+When `includeDetails` is true, each result can include a `details` array with up to 10 payables (id, description, amount, date, etc.).

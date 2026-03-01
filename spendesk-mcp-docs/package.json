@@ -1,0 +1,17 @@
+{
+  "name": "spendesk-mcp-docs",
+  "version": "1.0.0",
+  "description": "Spendesk MCP documentation (Mintlify)",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "mintlify dev"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mintlify": "^4.2.391",
+    "http-proxy": "^1.18.1"
+  }
+}
