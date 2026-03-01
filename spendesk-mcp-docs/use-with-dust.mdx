@@ -1,0 +1,154 @@
+---
+title: Utiliser le MCP avec Dust
+description: Configuration pas à pas du serveur Spendesk MCP dans Dust (app.dust.tt) et exemples de cas d'usage.
+---
+
+Ce guide décrit la configuration du serveur Spendesk MCP dans [Dust](https://app.dust.tt), étape par étape, avec la navigation dans l’interface.
+
+---
+
+## Prérequis
+
+- Un compte [Dust](https://app.dust.tt).
+- Vos identifiants Spendesk : **Client ID** et **Client Secret** (depuis Spendesk → Paramètres → Intégrations → Gestion d’accès API), ou une clé API générée via le portail MCP `/ui`.
+
+---
+
+## Étape 1 — Ouvrir la configuration des outils
+
+1. Connectez-vous à **app.dust.tt**.
+2. Dans le menu de gauche, allez dans **Spaces** (ou **Administration**).
+3. Cliquez sur **Tools** (Outils).
+4. Cliquez sur **Add tool** (ou éditez un outil existant « Spendesk MCP Server »).
+5. Le panneau de droite s’ouvre : onglet **Info** par défaut.
+
+<Note>
+  Vous pouvez ajouter une capture d’écran de l’écran **Tools** avec la liste des outils (avant ou après ajout du MCP). Placez l’image dans `img/dust-tools.png`.
+</Note>
+
+![Écran Tools dans Dust — ajouter un outil](/img/dust-tools.png)
+
+---
+
+## Étape 2 — Renseigner l’URL du serveur MCP
+
+1. Dans le panneau de configuration, repérez le champ **Server URL**.
+2. Saisissez exactement :
+
+`https://spendesk-mcp-server-production.up.railway.app/mcp`
+
+3. Ne pas ajouter de slash à la fin.
+
+<Check>
+  C’est la seule URL à utiliser pour ce MCP ; pas besoin de variante selon l’environnement.
+</Check>
+
+![Champ Server URL rempli](/img/dust-server-url.png)
+
+---
+
+## Étape 3 — Configurer l’authentification
+
+Dust envoie un **Bearer token** (ou des headers). Choisissez une option.
+
+### Option A — Bearer avec Client ID + Client Secret (recommandé)
+
+1. Générez le token sur votre machine (à la racine du dépôt) :
+
+```bash
+node scripts/generate-dust-bearer.mjs VOTRE_CLIENT_ID VOTRE_CLIENT_SECRET
+```
+
+2. Copiez toute la ligne affichée (elle commence par `client_credentials:`).
+3. Dans Dust, ouvrez **Advanced settings** → **Bearer Token (Authorization)**.
+4. Collez la chaîne dans « Paste the Bearer Token here ».
+5. Cliquez sur **Save**.
+
+### Option B — Headers
+
+1. Dans Dust, section **Networking & Headers** → **Add Header**.
+2. Ajoutez :
+   - **Name :** `X-Spendesk-Client-Id` — **Value :** votre Client ID
+   - **Name :** `X-Spendesk-Client-Secret` — **Value :** votre Client Secret
+3. **Save**.
+
+![Paramètres avancés — Bearer ou Headers](/img/dust-auth.png)
+
+---
+
+## Étape 4 — Synchroniser et tester
+
+1. À côté du champ **Server URL**, cliquez sur **Sync** pour charger la liste des outils MCP.
+2. Vous devriez voir de nombreux outils Spendesk (analyse de dépenses, AP aging, bookkeeping, etc.).
+3. Dans un **assistant** Dust, posez une question pour vérifier la connexion.
+
+<Tip>
+  En cas d’erreur, vérifiez l’URL, le Bearer (ou les headers) et les droits de votre compte Spendesk (lecture payables, etc.).
+</Tip>
+
+---
+
+## Exemples de cas d’usage (avec captures)
+
+Voici trois exemples typiques. Vous pouvez les illustrer par des captures d’écran (prompt + réponse) dans Dust.
+
+### Cas 1 — Top 10 fournisseurs par dépenses
+
+**Objectif :** Obtenir les 10 fournisseurs les plus dépensiers sur une période.
+
+**Dans Dust**, demandez par exemple :
+
+```
+Quels sont nos 10 plus gros fournisseurs par montant dépensé sur le dernier trimestre ?
+```
+
+L’assistant utilisera l’outil `spendesk_analyze_spend` (groupBy: supplier) et affichera les montants et parts.
+
+![Exemple Dust — top fournisseurs](/img/dust-use-top-suppliers.png)
+
+---
+
+### Cas 2 — Factures en retard
+
+**Objectif :** Voir les factures fournisseurs en retard de paiement.
+
+**Dans Dust**, demandez par exemple :
+
+```
+Liste les factures en retard de paiement et le montant total en retard.
+```
+
+L’assistant utilisera `spendesk_get_ap_aging` (et éventuellement `spendesk_get_cash_position`) pour afficher les montants par échéance et les plus urgents.
+
+![Exemple Dust — factures en retard](/img/dust-use-overdue.png)
+
+---
+
+### Cas 3 — Position de trésorerie
+
+**Objectif :** Avoir une vue synthétique des engagements de trésorerie (dus aujourd’hui, à 7 j, 30 j).
+
+**Dans Dust**, demandez par exemple :
+
+```
+Donne-moi la position de trésorerie : ce qui est en retard, dû aujourd’hui, et dû dans les 7 et 30 prochains jours.
+```
+
+L’assistant utilisera `spendesk_get_cash_position` pour afficher les montants par catégorie.
+
+![Exemple Dust — position de trésorerie](/img/dust-use-cash-position.png)
+
+---
+
+## Fichiers d’images à ajouter
+
+Pour que les captures s’affichent dans la doc, ajoutez dans le dossier `img/` du dépôt de la doc les fichiers suivants (PNG ou JPG) :
+
+| Fichier | Description |
+|--------|-------------|
+| `dust-tools.png` | Écran Tools / liste des outils dans Dust |
+| `dust-server-url.png` | Champ Server URL rempli avec l’URL du MCP |
+| `dust-auth.png` | Advanced settings — Bearer ou Headers |
+| `dust-use-top-suppliers.png` | Exemple de réponse « top 10 fournisseurs » |
+| `dust-use-overdue.png` | Exemple de réponse « factures en retard » |
+| `dust-use-cash-position.png` | Exemple de réponse « position de trésorerie » |

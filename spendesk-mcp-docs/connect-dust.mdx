@@ -1,76 +1,10 @@
 ---
-title: Connect with Dust
-description: Configure the Spendesk MCP server in Dust (app.dust.tt). Server URL, Bearer token or headers, and sync.
+title: Connect with Dust (archived)
+description: This page has been replaced by the step-by-step guide "Utiliser le MCP avec Dust".
 ---
 
-This section explains how to add the Spendesk MCP server as a tool in [Dust](https://app.dust.tt) so your assistants can query Spendesk data.
+<Note>
+  **Cette page est remplacée par le guide dédié.** Suivez la configuration pas à pas et les exemples de cas d'usage ici :
+</Note>
 
-## 1. Open the tool configuration
-
-1. In Dust, go to **Spaces** (or **Administration**).
-2. Open **Tools**.
-3. Create a new tool or edit an existing one (e.g. "Spendesk MCP Server").
-4. In the right-hand panel, open the **Info** tab.
-
-## 2. Server URL
-
-In **Server URL**, enter:
-
-`https://spendesk-mcp-server-production.up.railway.app/mcp`
-
-(no trailing slash after `/mcp`)
-
-## 3. Authentication
-
-Dust sends a **Bearer token** in the request headers. You can use either **client credentials** (Client ID + Client Secret from Spendesk) or an **API key** (from the MCP server’s `/ui` registration).
-
-### Option A — Bearer with client credentials (recommended)
-
-Use your Spendesk **Client ID** and **Client Secret** in a single Bearer token.
-
-1. **Generate the Bearer string** (from your machine, in the repo):
-
-```bash
-node scripts/generate-dust-bearer.mjs <your_client_id> <your_client_secret>
-```
-
-Or with env vars:
-
-```bash
-SPENDESK_CLIENT_ID=xxx SPENDESK_CLIENT_SECRET=yyy node scripts/generate-dust-bearer.mjs
-```
-
-2. Copy the output (it starts with `client_credentials:`).
-3. In Dust, under **Advanced settings** → **Bearer Token (Authorization)**, paste that full string into "Paste the Bearer Token here".
-4. Save.
-
-Dust will send this Bearer on every request; the MCP server will call Spendesk’s `POST /v1/auth/token` and use the returned access token for the session.
-
-### Option B — Headers (Client ID + Client Secret)
-
-If you prefer not to put the secret in the Bearer field:
-
-1. In Dust, open **Networking & Headers** → **Add Header**.
-2. Add:
-   - **Name:** `X-Spendesk-Client-Id`  
-     **Value:** your Spendesk Client ID
-   - **Name:** `X-Spendesk-Client-Secret`  
-     **Value:** your Spendesk Client Secret
-3. Leave **Bearer Token** empty (or don’t use it for Spendesk).
-4. Save.
-
-### Option C — API key (multi-tenant)
-
-If you registered via the MCP server’s **/ui** portal and have an **API key**:
-
-1. In Dust, set **Bearer Token** to that API key.
-2. To target a specific company, use **Bearer** = `your-api-key:company_key` (e.g. `abc123:spendesk-fr`).
-
-## 4. Sync and test
-
-1. Click **Sync** next to the Server URL to refresh the list of tools (you should see many Spendesk MCP tools).
-2. Use a Dust assistant and ask e.g. *"What are our top 10 suppliers by spend this quarter?"* to confirm the connection.
-
-<Tip>
-  If the first request returns an error or no data, check that the Server URL is correct, that the Bearer or headers are set, and that your Spendesk credentials have the right permissions (e.g. payables read).
-</Tip>
+[**Utiliser le MCP avec Dust**](/use-with-dust) — configuration dans Dust (app.dust.tt), URL du serveur, authentification (Bearer ou headers), sync, et 3 exemples avec captures d'écran.

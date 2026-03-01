@@ -1,0 +1,156 @@
+---
+title: Utiliser le MCP avec Claude
+description: Configuration pas à pas du serveur Spendesk MCP avec Claude (Desktop ou API) et exemples de cas d'usage.
+---
+
+Ce guide décrit la configuration du serveur Spendesk MCP avec **Claude** (Claude Desktop ou autre client MCP), étape par étape, avec la navigation dans l’outil.
+
+---
+
+## Prérequis
+
+- [Claude Desktop](https://claude.ai/download) (ou un client supportant MCP).
+- Vos identifiants Spendesk : token API ou **Client ID** + **Client Secret**, ou une clé API du portail MCP `/ui`.
+
+---
+
+## Étape 1 — Ouvrir la configuration MCP de Claude
+
+1. Ouvrez **Claude Desktop** (ou votre client Claude).
+2. Allez dans **Settings** (Paramètres) — icône engrenage ou menu.
+3. Repérez la section **MCP** ou **Model Context Protocol** / **Developers**.
+4. Vous y verrez la liste des serveurs MCP et un moyen d’**ajouter** ou **éditer** un serveur (fichier de config ou formulaire selon la version).
+
+<Note>
+  Selon votre version, la config MCP peut être dans un fichier (ex. `claude_desktop_config.json`) ou dans l’interface. Une capture de l’écran de paramètres MCP peut être ajoutée dans `img/claude-settings.png`.
+</Note>
+
+![Écran Paramètres / MCP dans Claude](/img/claude-settings.png)
+
+---
+
+## Étape 2 — Ajouter l’URL du serveur MCP
+
+1. Créez ou éditez une entrée de serveur MCP (ex. nom « spendesk »).
+2. Renseignez l’**URL** du serveur :
+
+`https://spendesk-mcp-server-production.up.railway.app/mcp`
+
+3. Ne pas ajouter de slash à la fin.
+
+<Check>
+  C’est la seule URL à utiliser pour ce MCP.
+</Check>
+
+![Configuration MCP — champ URL](/img/claude-config-url.png)
+
+---
+
+## Étape 3 — Configurer l’authentification
+
+Claude envoie les en-têtes HTTP au serveur MCP. Il faut envoyer un **Bearer token**.
+
+1. Dans la config MCP, ajoutez une entrée **headers** (ou équivalent) avec :
+   - **Authorization** : `Bearer VOTRE_TOKEN`
+2. Remplacez `VOTRE_TOKEN` par :
+   - soit votre **token API Spendesk**,
+   - soit la chaîne **client_credentials** générée par :  
+     `node scripts/generate-dust-bearer.mjs VOTRE_CLIENT_ID VOTRE_CLIENT_SECRET`  
+     (même format que pour Dust).
+3. Exemple de configuration (format attendu par Claude Desktop) :
+
+```json
+{
+  "mcpServers": {
+    "spendesk": {
+      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
+      "headers": {
+        "Authorization": "Bearer VOTRE_TOKEN_ICI"
+      }
+    }
+  }
+}
+```
+
+4. Enregistrez le fichier ou la configuration, puis **redémarrez Claude** si nécessaire.
+
+![Exemple de config avec headers](/img/claude-auth.png)
+
+---
+
+## Étape 4 — Vérifier et tester
+
+1. Redémarrez Claude Desktop (ou rechargez la config MCP) pour prendre en compte les changements.
+2. Ouvrez une nouvelle conversation.
+3. Posez une question qui nécessite les données Spendesk pour vérifier que les outils MCP sont bien appelés.
+
+<Tip>
+  En cas d’erreur, vérifiez l’URL, la présence du header `Authorization: Bearer ...` et les droits de votre token Spendesk.
+</Tip>
+
+---
+
+## Exemples de cas d’usage (avec captures)
+
+Trois exemples à utiliser dans Claude. Vous pouvez les illustrer par des captures (prompt + réponse).
+
+### Cas 1 — Top 10 fournisseurs par dépenses
+
+**Objectif :** Obtenir les 10 fournisseurs les plus dépensiers sur une période.
+
+**Dans Claude**, demandez par exemple :
+
+```
+Quels sont nos 10 plus gros fournisseurs par montant dépensé sur le dernier trimestre ?
+```
+
+Claude utilisera `spendesk_analyze_spend` (groupBy: supplier) et affichera les montants et parts.
+
+![Exemple Claude — top fournisseurs](/img/claude-use-top-suppliers.png)
+
+---
+
+### Cas 2 — Factures en retard
+
+**Objectif :** Voir les factures fournisseurs en retard de paiement.
+
+**Dans Claude**, demandez par exemple :
+
+```
+Liste les factures en retard de paiement et le montant total en retard.
+```
+
+Claude utilisera `spendesk_get_ap_aging` (et éventuellement `spendesk_get_cash_position`) pour afficher les montants et les plus urgents.
+
+![Exemple Claude — factures en retard](/img/claude-use-overdue.png)
+
+---
+
+### Cas 3 — Position de trésorerie
+
+**Objectif :** Vue synthétique des engagements de trésorerie (dus aujourd’hui, à 7 j, 30 j).
+
+**Dans Claude**, demandez par exemple :
+
+```
+Donne-moi la position de trésorerie : ce qui est en retard, dû aujourd’hui, et dû dans les 7 et 30 prochains jours.
+```
+
+Claude utilisera `spendesk_get_cash_position` pour afficher les montants par catégorie.
+
+![Exemple Claude — position de trésorerie](/img/claude-use-cash-position.png)
+
+---
+
+## Fichiers d’images à ajouter
+
+Pour que les captures s’affichent dans la doc, ajoutez dans le dossier `img/` les fichiers suivants (PNG ou JPG) :
+
+| Fichier | Description |
+|--------|-------------|
+| `claude-settings.png` | Écran Paramètres / MCP dans Claude |
+| `claude-config-url.png` | Config MCP avec l’URL du serveur |
+| `claude-auth.png` | Exemple de config avec header Authorization |
+| `claude-use-top-suppliers.png` | Exemple de réponse « top 10 fournisseurs » |
+| `claude-use-overdue.png` | Exemple de réponse « factures en retard » |
+| `claude-use-cash-position.png` | Exemple de réponse « position de trésorerie » |

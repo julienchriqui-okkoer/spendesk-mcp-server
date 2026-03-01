@@ -1,96 +1,56 @@
 ---
 title: Quickstart
-description: Generate a Spendesk token, connect your AI assistant (Claude, Cursor, or ChatGPT), and run your first prompts.
+description: Générer un token Spendesk, puis connecter Dust ou Claude au MCP en quelques étapes.
 ---
 
-## Step 1: Generate a token in Spendesk
+## Étape 1 — Obtenir un token Spendesk
 
-1. Log in to [Spendesk](https://app.spendesk.com) (or your Spendesk domain).
-2. Go to **Settings** → **Integrations** → **API access management** (or **Gestion d'accès API**).
-3. Create a new API token or use OAuth 2.0 client credentials (Client ID + Client Secret).
-4. Copy the token (or Client ID and Client Secret). You will paste it into your AI assistant config in Step 2.
+1. Connectez-vous à [Spendesk](https://app.spendesk.com) (ou votre domaine Spendesk).
+2. Allez dans **Paramètres** → **Intégrations** → **Gestion d'accès API**.
+3. Créez un token API ou récupérez vos **Client ID** et **Client Secret** (OAuth 2.0).
+4. Copiez le token (ou les deux identifiants) pour l'étape suivante.
 
 <Note>
-  For client credentials (Client ID + Client Secret), use the Bearer format `client_credentials:<base64(client_id:client_secret)>` or send headers `X-Spendesk-Client-Id` and `X-Spendesk-Client-Secret`. See the main docs for your deployment (e.g. Dust, Railway) for the exact auth method.
+  Avec Client ID + Client Secret, vous devrez générer une chaîne Bearer (voir les guides Dust ou Claude ci-dessous).
 </Note>
 
-## Step 2: Connect your AI assistant
+---
 
-Configure the MCP server in your assistant. Use the URL and auth below. For **Dust**, see the dedicated [Connect with Dust](/connect-dust) page.
+## Étape 2 — Connecter votre assistant
 
-<Tabs>
-  <Tab title="Claude">
-Add the Spendesk MCP server in Claude (e.g. Claude Desktop or API). Example config:
+Choisissez votre outil et suivez le guide dédié (configuration pas à pas et navigation) :
 
-```json
-{
-  "mcpServers": {
-    "spendesk": {
-      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_SPENDESK_TOKEN_HERE"
-      }
-    }
-  }
-}
-```
+<CardGroup cols={2}>
+  <Card title="Utiliser le MCP avec Dust" icon="building" href="/use-with-dust">
+    Configuration dans Dust (app.dust.tt) : URL, Bearer ou headers, sync, et exemples de cas d'usage avec captures.
+  </Card>
+  <Card title="Utiliser le MCP avec Claude" icon="message-bot" href="/use-with-claude">
+    Configuration avec Claude Desktop : URL, headers Authorization, et exemples de cas d'usage avec captures.
+  </Card>
+</CardGroup>
 
-Replace `YOUR_SPENDESK_TOKEN_HERE` with your Spendesk API token or client-credentials Bearer string.
-  </Tab>
-  <Tab title="Cursor">
-In Cursor, add the MCP server (Settings → MCP). Example:
+---
 
-```json
-{
-  "mcpServers": {
-    "spendesk": {
-      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_SPENDESK_TOKEN_HERE"
-      }
-    }
-  }
-}
-```
+## Étape 3 — Tester avec un premier prompt
 
-Use your Spendesk token or client-credentials Bearer in the `Authorization` header.
-  </Tab>
-  <Tab title="ChatGPT">
-In ChatGPT (or your MCP-enabled client), configure the server URL and auth:
+Une fois le MCP configuré, essayez par exemple :
 
-```json
-{
-  "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
-  "headers": {
-    "Authorization": "Bearer YOUR_SPENDESK_TOKEN_HERE"
-  }
-}
-```
-
-Set the Bearer token to your Spendesk API token or client-credentials string.
-  </Tab>
-</Tabs>
-
-## Step 3: Try your first prompts
-
-Use these in your AI assistant to confirm the connection:
-
-**Top suppliers this quarter**
+**Top fournisseurs**
 
 ```
-What are our top 10 suppliers by spend for this quarter?
+Quels sont nos 10 plus gros fournisseurs par montant dépensé ce trimestre ?
 ```
 
-**Overdue invoices**
+**Factures en retard**
 
 ```
-List our overdue payables and total amount past due.
+Liste les factures en retard de paiement et le montant total en retard.
 ```
 
-**Spend by cost center**
+**Position de trésorerie**
 
 ```
-Show spend by cost center for January 2026.
+Donne-moi la position de trésorerie : en retard, dû aujourd'hui, et dû dans les 7 et 30 prochains jours.
 ```
 
-The assistant will call the Spendesk MCP tools (e.g. `spendesk_analyze_spend`, `spendesk_get_ap_aging`) and return results from your live Spendesk data.
+L'assistant appellera les outils Spendesk (ex. `spendesk_analyze_spend`, `spendesk_get_ap_aging`, `spendesk_get_cash_position`) et affichera les résultats à partir de vos données Spendesk.
