@@ -4,7 +4,18 @@
  */
 
 import type { SpendeskClient } from "../spendesk-api/client.js";
+import { SpendeskPaths } from "../spendesk-api/endpoints.js";
 import { fetchAllPayables, type Payable } from "./fetch-all-payables.js";
+
+/** Payable types that have employee = userId (cardholder). */
+const CARD_PAYABLE_TYPES = new Set([
+  "subscriptionCard",
+  "singlePurchaseCard",
+  "physicalCard",
+  "multiUseCard",
+]);
+/** Payable type for invoices; employee = userId (requester). */
+const INVOICE_PAYABLE_TYPE = "invoicePurchase";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -148,6 +159,67 @@ function groupByExpenseAccount(filtered: Payable[]): Record<string, { total: num
   return byKey;
 }
 
+type UserResponse = {
+  firstName?: string;
+  lastName?: string;
+  first_name?: string;
+  last_name?: string;
+};
+
+async function resolveUserIdToName(api: SpendeskClient, userId: string): Promise<string> {
+  try {
+    const user = await api.get<UserResponse>(SpendeskPaths.getUserById(userId));
+    const first = user?.firstName ?? user?.first_name ?? "";
+    const last = user?.lastName ?? user?.last_name ?? "";
+    return [first, last].filter(Boolean).join(" ").trim() || userId;
+  } catch {
+    return userId;
+  }
+}
+
+/**
+ * groupBy "employee": merge expense claims (counterparty.name), card transactions (userId = cardholder), and invoices (userId = requester).
+ * Resolves userId to display name via API.
+ */
+async function groupByEmployee(
+  api: SpendeskClient,
+  filtered: Payable[]
+): Promise<Record<string, Payable[]>> {
+  const expenseClaims = filtered.filter((p) => p.counterparty?.type === "employee");
+  const cardPayables = filtered.filter(
+    (p) => CARD_PAYABLE_TYPES.has(p.type) && p.userId
+  );
+  const invoicePayables = filtered.filter(
+    (p) => p.type === INVOICE_PAYABLE_TYPE && p.userId
+  );
+
+  const byExpenseName = groupByKey(expenseClaims, (p) => p.counterparty?.name ?? "Unassigned");
+  const cardsByUserId = groupByKey(cardPayables, (p) => p.userId!);
+  const invoicesByUserId = groupByKey(invoicePayables, (p) => p.userId!);
+
+  const allUserIds = [
+    ...new Set([...Object.keys(cardsByUserId), ...Object.keys(invoicesByUserId)]),
+  ];
+  const userIdToName: Record<string, string> = {};
+  for (const uid of allUserIds) {
+    userIdToName[uid] = await resolveUserIdToName(api, uid);
+  }
+
+  const nameToPayables: Record<string, Payable[]> = {};
+  for (const [name, payables] of Object.entries(byExpenseName)) {
+    if (!nameToPayables[name]) nameToPayables[name] = [];
+    nameToPayables[name].push(...payables);
+  }
+  for (const uid of allUserIds) {
+    const name = userIdToName[uid];
+    const payables = [...(cardsByUserId[uid] ?? []), ...(invoicesByUserId[uid] ?? [])];
+    if (payables.length === 0) continue;
+    if (!nameToPayables[name]) nameToPayables[name] = [];
+    nameToPayables[name].push(...payables);
+  }
+  return nameToPayables;
+}
+
 export async function analyzeSpend(
   api: SpendeskClient,
   params: AnalyzeSpendParams
@@ -241,8 +313,7 @@ export async function analyzeSpend(
       results: expenseResults,
     };
   } else if (groupBy === "employee") {
-    const employees = filtered.filter((p) => p.counterparty?.type === "employee");
-    grouped = groupByKey(employees, (p) => p.counterparty?.name ?? "Unassigned");
+    grouped = await groupByEmployee(api, filtered);
   } else if (groupBy === "currency") {
     grouped = groupByKey(filtered, (p) => p.currency ?? "Unassigned");
   } else if (groupBy === "bookkeepingStatus") {

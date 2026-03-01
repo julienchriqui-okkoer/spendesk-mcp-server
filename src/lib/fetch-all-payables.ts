@@ -19,6 +19,8 @@ const SNAPSHOT_CREATE_DELAY_MS = 1_200;
 export interface Payable {
   id: string;
   type: string;
+  /** User ID (cardholder for cards, requester for invoices). Present on card and invoice payables. */
+  userId?: string;
   payableDate: string;
   accountingDate: string;
   invoiceDueDate?: string;
@@ -228,9 +230,12 @@ function normalizePayable(p: unknown): Payable {
       })
     ),
   }));
+  const userId =
+    raw.userId != null ? String(raw.userId) : raw.user_id != null ? String(raw.user_id) : undefined;
   return {
     id: String(raw.id ?? ""),
     type: String(raw.type ?? raw.payableType ?? ""),
+    userId: userId || undefined,
     payableDate: String(raw.payableDate ?? raw.payable_date ?? raw.date ?? ""),
     accountingDate: String(raw.accountingDate ?? raw.accounting_date ?? ""),
     invoiceDueDate: raw.invoiceDueDate != null ? String(raw.invoiceDueDate) : undefined,
