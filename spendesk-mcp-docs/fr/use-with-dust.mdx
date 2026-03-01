@@ -22,10 +22,6 @@ Ce guide décrit la configuration du serveur Spendesk MCP dans [Dust](https://ap
 4. Cliquez sur **Add tool** (ou éditez un outil existant « Spendesk MCP Server »).
 5. Le panneau de droite s'ouvre : onglet **Info** par défaut.
 
-<Note>
-  Vous pouvez ajouter une capture d'écran de l'écran **Tools** avec la liste des outils (avant ou après ajout du MCP). Placez l'image dans `img/dust-tools.png`.
-</Note>
-
 ![Écran Tools dans Dust — ajouter un outil](/img/dust-tools.png)
 
 ---
@@ -88,9 +84,9 @@ node scripts/generate-dust-bearer.mjs VOTRE_CLIENT_ID VOTRE_CLIENT_SECRET
 
 ---
 
-## Exemples de cas d'usage (avec captures)
+## Exemples de cas d'usage
 
-Voici trois exemples typiques. Vous pouvez les illustrer par des captures d'écran (prompt + réponse) dans Dust.
+Voici trois exemples typiques.
 
 ### Cas 1 — Top 10 fournisseurs par dépenses
 
@@ -137,18 +133,3 @@ Donne-moi la position de trésorerie : ce qui est en retard, dû aujourd'hui, et
 L'assistant utilisera `spendesk_get_cash_position` pour afficher les montants par catégorie.
 
 ![Exemple Dust — position de trésorerie](/img/dust-use-cash-position.png)
-
----
-
-## Fichiers d'images à ajouter
-
-Pour que les captures s'affichent dans la doc, ajoutez dans le dossier `img/` du dépôt de la doc les fichiers suivants (PNG ou JPG) :
-
-| Fichier | Description |
-|--------|-------------|
-| `dust-tools.png` | Écran Tools / liste des outils dans Dust |
-| `dust-server-url.png` | Champ Server URL rempli avec l'URL du MCP |
-| `dust-auth.png` | Advanced settings — Bearer ou Headers |
-| `dust-use-top-suppliers.png` | Exemple de réponse « top 10 fournisseurs » |
-| `dust-use-overdue.png` | Exemple de réponse « factures en retard » |
-| `dust-use-cash-position.png` | Exemple de réponse « position de trésorerie » |

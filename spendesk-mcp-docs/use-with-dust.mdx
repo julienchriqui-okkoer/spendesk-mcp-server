@@ -22,10 +22,6 @@ This guide explains how to configure the Spendesk MCP server in [Dust](https://a
 4. Click **Add tool** (or edit an existing "Spendesk MCP Server" tool).
 5. The right-hand panel opens: **Info** tab by default.
 
-<Note>
-  You can add a screenshot of the **Tools** screen with the list of tools (before or after adding the MCP). Place the image in `img/dust-tools.png`.
-</Note>
-
 ![Tools screen in Dust — add a tool](/img/dust-tools.png)
 
 ---
@@ -88,9 +84,9 @@ node scripts/generate-dust-bearer.mjs YOUR_CLIENT_ID YOUR_CLIENT_SECRET
 
 ---
 
-## Example use cases (with screenshots)
+## Example use cases
 
-Here are three typical examples. You can illustrate them with screenshots (prompt + response) in Dust.
+Here are three typical examples.
 
 ### Case 1 — Top 10 suppliers by spend
 
@@ -137,18 +133,3 @@ Give me the cash position: what is overdue, due today, and due in the next 7 and
 The assistant will use `spendesk_get_cash_position` to show amounts by category.
 
 ![Dust example — cash position](/img/dust-use-cash-position.png)
-
----
-
-## Image files to add
-
-To display the screenshots in the doc, add the following files (PNG or JPG) in the `img/` folder:
-
-| File | Description |
-|------|-------------|
-| `dust-tools.png` | Tools screen / list of tools in Dust |
-| `dust-server-url.png` | Server URL field filled with the MCP URL |
-| `dust-auth.png` | Advanced settings — Bearer or Headers |
-| `dust-use-top-suppliers.png` | Example "top 10 suppliers" response |
-| `dust-use-overdue.png` | Example "overdue invoices" response |
-| `dust-use-cash-position.png` | Example "cash position" response |

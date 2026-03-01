@@ -21,10 +21,6 @@ Ce guide décrit la configuration du serveur Spendesk MCP avec **Claude** (Claud
 3. Repérez la section **MCP** ou **Model Context Protocol** / **Developers**.
 4. Vous y verrez la liste des serveurs MCP et un moyen d'**ajouter** ou **éditer** un serveur (fichier de config ou formulaire selon la version).
 
-<Note>
-  Selon votre version, la config MCP peut être dans un fichier (ex. `claude_desktop_config.json`) ou dans l'interface. Une capture de l'écran de paramètres MCP peut être ajoutée dans `img/claude-settings.png`.
-</Note>
-
 ![Écran Paramètres / MCP dans Claude](/img/claude-settings.png)
 
 ---
@@ -90,9 +86,9 @@ Claude envoie les en-têtes HTTP au serveur MCP. Il faut envoyer un **Bearer tok
 
 ---
 
-## Exemples de cas d'usage (avec captures)
+## Exemples de cas d'usage
 
-Trois exemples à utiliser dans Claude. Vous pouvez les illustrer par des captures (prompt + réponse).
+Trois exemples à utiliser dans Claude.
 
 ### Cas 1 — Top 10 fournisseurs par dépenses
 
@@ -139,18 +135,3 @@ Donne-moi la position de trésorerie : ce qui est en retard, dû aujourd'hui, et
 Claude utilisera `spendesk_get_cash_position` pour afficher les montants par catégorie.
 
 ![Exemple Claude — position de trésorerie](/img/claude-use-cash-position.png)
-
----
-
-## Fichiers d'images à ajouter
-
-Pour que les captures s'affichent dans la doc, ajoutez dans le dossier `img/` les fichiers suivants (PNG ou JPG) :
-
-| Fichier | Description |
-|--------|-------------|
-| `claude-settings.png` | Écran Paramètres / MCP dans Claude |
-| `claude-config-url.png` | Config MCP avec l'URL du serveur |
-| `claude-auth.png` | Exemple de config avec header Authorization |
-| `claude-use-top-suppliers.png` | Exemple de réponse « top 10 fournisseurs » |
-| `claude-use-overdue.png` | Exemple de réponse « factures en retard » |
-| `claude-use-cash-position.png` | Exemple de réponse « position de trésorerie » |

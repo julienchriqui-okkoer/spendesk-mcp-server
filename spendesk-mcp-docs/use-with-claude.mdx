@@ -21,10 +21,6 @@ This guide explains how to configure the Spendesk MCP server with **Claude** (Cl
 3. Find the **MCP** or **Model Context Protocol** / **Developers** section.
 4. You will see the list of MCP servers and a way to **add** or **edit** a server (config file or form depending on version).
 
-<Note>
-  Depending on your version, the MCP config may be in a file (e.g. `claude_desktop_config.json`) or in the UI. A screenshot of the MCP settings screen can be added in `img/claude-settings.png`.
-</Note>
-
 ![Settings / MCP screen in Claude](/img/claude-settings.png)
 
 ---
@@ -90,9 +86,9 @@ Claude sends HTTP headers to the MCP server. You must send a **Bearer token**.
 
 ---
 
-## Example use cases (with screenshots)
+## Example use cases
 
-Three examples to use in Claude. You can add screenshots (prompt + response).
+Three examples to use in Claude.
 
 ### Case 1 — Top 10 suppliers by spend
 
@@ -139,18 +135,3 @@ Give me the cash position: what is overdue, due today, and due in the next 7 and
 Claude will use `spendesk_get_cash_position` to show amounts by category.
 
 ![Claude example — cash position](/img/claude-use-cash-position.png)
-
----
-
-## Image files to add
-
-To display the screenshots in the doc, add the following files (PNG or JPG) in the `img/` folder:
-
-| File | Description |
-|------|-------------|
-| `claude-settings.png` | Settings / MCP screen in Claude |
-| `claude-config-url.png` | MCP config with server URL |
-| `claude-auth.png` | Example config with Authorization header |
-| `claude-use-top-suppliers.png` | Example "top 10 suppliers" response |
-| `claude-use-overdue.png` | Example "overdue invoices" response |
-| `claude-use-cash-position.png` | Example "cash position" response |
