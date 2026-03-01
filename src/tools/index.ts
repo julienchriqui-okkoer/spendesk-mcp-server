@@ -19,13 +19,9 @@ import {
   getCashPosition,
   getAccruals,
 } from "../lib/composite-tools.js";
-import alasql from "alasql";
 import { getApiReference } from "../lib/api-reference.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
 import { z } from "zod";
-
-/** Session store for load + query pattern (avoids MCP serializing raw API response). */
-const SESSION: { purchaseOrders?: Record<string, unknown>[] } = {};
 
 const paginationSchema = {
   page: z.number().int().min(1).optional().describe("Page number (1-based)"),
@@ -472,64 +468,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_delete_webhook":
         return api.delete(SpendeskPaths.deleteWebhook(args.webhookId as string));
 
-      case "spendesk_load_purchase_orders": {
-        const status = args.status != null ? String(args.status) : undefined;
-        const supplierId = args.supplierId != null ? String(args.supplierId) : undefined;
-        const userId = args.userId != null ? String(args.userId) : undefined;
-        const allItems: Record<string, unknown>[] = [];
-        let page = 1;
-        const pageSize = 100;
-        const toPoParams = (p: { page: number; perPage: number; supplierId?: string; userId?: string }) => {
-          const params: Record<string, string> = { page: String(p.page), per_page: String(p.perPage) };
-          if (p.supplierId) params.supplier_id = p.supplierId;
-          if (p.userId) params.user_id = p.userId;
-          return params;
-        };
-        while (true) {
-          const params = toPoParams({ page, perPage: pageSize, supplierId, userId });
-          const res = (await api.get(SpendeskPaths.getPurchaseOrders, params)) as Record<string, unknown>;
-          const list = (res.purchaseOrders ?? res.data ?? res.items) as Record<string, unknown>[] | undefined;
-          const items = Array.isArray(list) ? list : [];
-          allItems.push(...items);
-          const total =
-            (res.pagination as { total?: number })?.total ??
-            (res.meta as { pagination?: { total?: number } })?.pagination?.total ??
-            (res.result as { meta?: { pagination?: { total?: number } } })?.meta?.pagination?.total ??
-            Number((res as { totalCount?: number }).totalCount) ??
-            0;
-          if (items.length === 0) break;
-          if (total > 0 && allItems.length >= total) break;
-          if (items.length < pageSize) break;
-          page++;
-        }
-        SESSION.purchaseOrders = allItems;
-        const columns =
-          allItems.length > 0
-            ? Object.keys(allItems[0] as Record<string, unknown>)
-            : ["id", "number", "status", "supplier", "costCenter", "currency", "totalAmount", "startDate", "endDate", "description"];
-        return {
-          loaded: allItems.length,
-          message: `${allItems.length} POs loaded (raw API shape). Use spendesk_query_purchase_orders with SQL; columns may be nested (e.g. supplier.name).`,
-          columns,
-        };
-      }
-      case "spendesk_query_purchase_orders": {
-        if (!SESSION.purchaseOrders?.length) {
-          return { error: "No POs in memory. Call spendesk_load_purchase_orders first." };
-        }
-        const sql = String(args.sql ?? "").trim();
-        if (!sql) return { error: "sql is required." };
-        try {
-          const results = alasql(sql, [SESSION.purchaseOrders]) as Record<string, unknown>[];
-          return { rows: results, count: results.length };
-        } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : String(e);
-          return { error: `SQL error: ${message}` };
-        }
-      }
-      case "spendesk_clear_purchase_orders": {
-        delete SESSION.purchaseOrders;
-        return { cleared: true };
+      case "spendesk_get_purchase_orders": {
+        const page = Number(args.page) >= 1 ? String(args.page) : "1";
+        const perPage = Math.min(100, Math.max(1, Number(args.perPage ?? 20)));
+        return api.get(SpendeskPaths.getPurchaseOrders, { page, per_page: String(perPage) });
       }
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
@@ -1004,28 +946,15 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     async (args) => toContent(await run("spendesk_delete_webhook", args))
   );
 
-  // —— Purchase Orders (load + query pattern to avoid MCP content size limit) ———
+  // —— Purchase Orders ———————————————————————————————————————————————————————
   mcp.tool(
-    "spendesk_load_purchase_orders",
-    "Load purchase orders into session memory for querying with spendesk_query_purchase_orders. Fetches all pages and sanitizes before any MCP serialization. Filters: status ('open'|'partially_received'|'closed'), supplierId, userId. Returns loaded count, message, and column list. Call spendesk_query_purchase_orders next with SQL (SELECT * FROM ? WHERE ... ORDER BY ...).",
+    "spendesk_get_purchase_orders",
+    "Get purchase orders from the API (one page, no filter). Returns the raw API response (e.g. purchaseOrders or data array + meta/pagination). Use page and perPage for pagination (default perPage: 20, max 100).",
     {
-      status: z.string().optional().describe("Filter by status: open, partially_received, closed, cancelled"),
-      supplierId: z.string().optional().describe("Filter by supplier ID"),
-      userId: z.string().optional().describe("Filter by user/requester ID"),
+      page: z.number().int().min(1).optional().describe("Page number (1-based). Default 1."),
+      perPage: z.number().int().min(1).max(100).optional().describe("Items per page. Default 20, max 100."),
     },
-    async (args) => toContent(await run("spendesk_load_purchase_orders", args))
-  );
-  mcp.tool(
-    "spendesk_query_purchase_orders",
-    "Run a SQL query against purchase orders loaded with spendesk_load_purchase_orders. Use standard SQL with ? as the table (e.g. SELECT * FROM ? WHERE status='open' AND remainingAmount > 0 ORDER BY endDate ASC, or SELECT supplierName, SUM(remainingAmount) as total FROM ? GROUP BY supplierName ORDER BY total DESC LIMIT 10). Returns { rows, count }. Call spendesk_load_purchase_orders first if empty.",
-    { sql: z.string().describe("SQL query; use ? for the in-memory PO table") },
-    async (args) => toContent(await run("spendesk_query_purchase_orders", args))
-  );
-  mcp.tool(
-    "spendesk_clear_purchase_orders",
-    "Clear purchase orders from session memory.",
-    {},
-    async () => toContent(await run("spendesk_clear_purchase_orders", {}))
+    async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );
   mcp.tool(
     "spendesk_create_purchase_order",

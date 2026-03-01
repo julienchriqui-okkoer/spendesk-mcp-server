@@ -362,42 +362,15 @@ export const API_REFERENCE = {
       description: "Delete a webhook instance.",
       pathParams: [{ name: "webhookId", type: "string", required: true, description: "Webhook ID" }],
     },
-    // —— Purchase Orders (load + query pattern) —————————————————————————————
-    {
-      method: "MCP",
-      path: "N/A",
-      mcpTool: "spendesk_load_purchase_orders",
-      description: "Load purchase orders into session. Fetches all pages and sanitizes before MCP. Filters: status, supplierId, userId. Call spendesk_query_purchase_orders next with SQL.",
-      queryParams: [
-        { name: "status", type: "string", required: false, description: "open | partially_received | closed | cancelled" },
-        { name: "supplierId", type: "string", required: false, description: "Filter by supplier ID" },
-        { name: "userId", type: "string", required: false, description: "Filter by user/requester ID" },
-      ],
-    },
-    {
-      method: "MCP",
-      path: "N/A",
-      mcpTool: "spendesk_query_purchase_orders",
-      description: "Run SQL against POs loaded by spendesk_load_purchase_orders. Use ? for table (e.g. SELECT * FROM ? WHERE status='open' ORDER BY endDate).",
-      queryParams: [{ name: "sql", type: "string", required: true, description: "SQL query" }],
-    },
-    {
-      method: "MCP",
-      path: "N/A",
-      mcpTool: "spendesk_clear_purchase_orders",
-      description: "Clear purchase orders from session memory.",
-      queryParams: [],
-    },
+    // —— Purchase Orders ————————————————————————————————————————————————————
     {
       method: "GET",
       path: "/v1/purchase-orders",
-      description: "API endpoint used internally by spendesk_load_purchase_orders. Prefer load + query tools.",
+      mcpTool: "spendesk_get_purchase_orders",
+      description: "Get purchase orders (one page, no filter). Pagination: page (default 1), perPage (default 20, max 100).",
       queryParams: [
-        { name: "page", type: "number", required: false, apiKey: "page", description: "Page" },
-        { name: "perPage", type: "number", required: false, apiKey: "per_page", description: "Per page" },
-        { name: "status", type: "string", required: false, apiKey: "status", description: "Filter by status" },
-        { name: "supplierId", type: "string", required: false, description: "Filter by supplier" },
-        { name: "userId", type: "string", required: false, description: "Filter by user" },
+        { name: "page", type: "number", required: false, description: "Page (1-based)" },
+        { name: "perPage", type: "number", required: false, description: "Items per page (max 100)" },
       ],
     },
     {
