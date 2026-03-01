@@ -150,11 +150,15 @@ export class SpendeskClient {
       return this.request<T>(method, path, options, is401Retry, retry429Count, retry409Count + 1);
     }
     if (!res.ok) {
-      throw new SpendeskApiError(
-        `Spendesk API error: ${res.status} ${res.statusText}`,
-        res.status,
-        data
-      );
+      const bodyHint =
+        data && typeof data === "object"
+          ? (data as Record<string, unknown>).message ?? (data as Record<string, unknown>).error ?? JSON.stringify(data).slice(0, 300)
+          : String(data).slice(0, 300);
+      const msg =
+        res.status >= 500
+          ? `Spendesk API error: ${res.status} ${res.statusText}. Server-side error — see body. Body: ${bodyHint}`
+          : `Spendesk API error: ${res.status} ${res.statusText}`;
+      throw new SpendeskApiError(msg, res.status, data);
     }
     return convertAmountsInResponse(data) as T;
   }

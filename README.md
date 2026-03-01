@@ -423,6 +423,14 @@ Si Dust ou Claude répond que **l’API Payables retourne 404** ou que **Settlem
 - **400 sur Settlements**  
   Requête invalide (paramètres ou format). Vérifier les valeurs passées (dates ISO, pas de paramètres inconnus) pour les filtres `paidFrom`, `clearedFrom`, `clearedTo`, `exportedAfter`. Si l’erreur persiste, contacter le support Spendesk.
 
+- **500 Internal Server Error**  
+  Erreur **côté serveur Spendesk** (pas dans le MCP). Le serveur API a planté ou refuse la requête pour une raison interne. À faire :
+  1. **Vérifier le token** : `SPENDESK_API_TOKEN` ou la clé enregistrée via `/ui` doit être valide et avoir les scopes nécessaires (ex. accès Purchase Orders si tu appelles les POs).
+  2. **Vérifier l’environnement** : en démo (`SPENDESK_USE_DEMO=true`), l’API démo peut ne pas supporter tous les endpoints (ex. purchase-orders).
+  3. **Réessayer plus tard** : un 500 peut être temporaire (incident Spendesk). Réessayer après quelques minutes.
+  4. **Regarder le détail** : depuis la dernière version, le message d’erreur inclut un extrait du corps de réponse de l’API (`Body: ...`) — cela peut indiquer la cause (ex. « feature not enabled », « invalid filter »).
+  5. **Contacter Spendesk** : si l’erreur est reproductible sur un compte prod avec un token valide, ouvrir un ticket au support Spendesk avec l’endpoint, les paramètres et le message/corps de la réponse.
+
 **Contournement** : tant que Payables n’est pas disponible, les rapports « top fournisseurs par spend » ou « dashboard spend » ne peuvent pas être calculés par le MCP. Tu peux utiliser les rapports Spendesk (Rapports → filtrer sur la période) ou activer le module Payables / les scopes côté Spendesk pour débloquer l’API.
 
 ## Découvrir la structure de l’API

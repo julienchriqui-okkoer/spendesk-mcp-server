@@ -478,67 +478,38 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         const userId = args.userId != null ? String(args.userId) : undefined;
         const allItems: Record<string, unknown>[] = [];
         let page = 1;
-        const perPage = 100;
+        const pageSize = 100;
+        const toPoParams = (p: { page: number; perPage: number; supplierId?: string; userId?: string }) => {
+          const params: Record<string, string> = { page: String(p.page), per_page: String(p.perPage) };
+          if (p.supplierId) params.supplier_id = p.supplierId;
+          if (p.userId) params.user_id = p.userId;
+          return params;
+        };
         while (true) {
-          const params: Record<string, string> = { page: String(page), perPage: String(perPage) };
-          if (status) params.status = status;
-          if (supplierId) params.supplierId = supplierId;
-          if (userId) params.userId = userId;
-          const res = (await api.get<{ purchaseOrders?: unknown[]; data?: unknown[] }>(
-            SpendeskPaths.getPurchaseOrders,
-            params
-          )) as Record<string, unknown>;
-          const list = (res.purchaseOrders ?? res.data) as Record<string, unknown>[] | undefined;
-          const items = Array.isArray(list)
-            ? list.map((po: Record<string, unknown>) => {
-                const supplier = po.supplier as Record<string, unknown> | undefined;
-                const costCenter = po.costCenter as Record<string, unknown> | undefined;
-                const requester = po.requester as Record<string, unknown> | undefined;
-                const total = Number(po.totalAmount ?? po.total_amount ?? 0);
-                const invoiced = Number(po.amountInvoiced ?? po.amount_invoiced ?? 0);
-                return {
-                  id: po.id,
-                  number: po.number ?? po.po_number ?? (po.id ? String(po.id).substring(0, 8) : null),
-                  status: po.status,
-                  supplierName: supplier?.name ?? null,
-                  costCenterName: costCenter?.name ?? null,
-                  requesterName:
-                    requester != null
-                      ? `${String(requester.firstName ?? requester.first_name ?? "")} ${String(requester.lastName ?? requester.last_name ?? "")}`.trim() || null
-                      : null,
-                  currency: po.currency,
-                  totalAmount: total,
-                  amountInvoiced: invoiced,
-                  remainingAmount: total - invoiced,
-                  startDate: po.startDate ?? po.start_date ?? null,
-                  endDate: po.endDate ?? po.end_date ?? null,
-                  description: String(po.description ?? "").substring(0, 120),
-                };
-              })
-            : [];
+          const params = toPoParams({ page, perPage: pageSize, supplierId, userId });
+          const res = (await api.get(SpendeskPaths.getPurchaseOrders, params)) as Record<string, unknown>;
+          const list = (res.purchaseOrders ?? res.data ?? res.items) as Record<string, unknown>[] | undefined;
+          const items = Array.isArray(list) ? list : [];
           allItems.push(...items);
-          if (items.length < perPage) break;
+          const total =
+            (res.pagination as { total?: number })?.total ??
+            (res.meta as { pagination?: { total?: number } })?.pagination?.total ??
+            (res.result as { meta?: { pagination?: { total?: number } } })?.meta?.pagination?.total ??
+            Number((res as { totalCount?: number }).totalCount) ??
+            0;
+          if (items.length === 0) break;
+          if (total > 0 && allItems.length >= total) break;
+          if (items.length < pageSize) break;
           page++;
         }
         SESSION.purchaseOrders = allItems;
-        const columns = [
-          "id",
-          "number",
-          "status",
-          "supplierName",
-          "costCenterName",
-          "requesterName",
-          "currency",
-          "totalAmount",
-          "amountInvoiced",
-          "remainingAmount",
-          "startDate",
-          "endDate",
-          "description",
-        ];
+        const columns =
+          allItems.length > 0
+            ? Object.keys(allItems[0] as Record<string, unknown>)
+            : ["id", "number", "status", "supplier", "costCenter", "currency", "totalAmount", "startDate", "endDate", "description"];
         return {
           loaded: allItems.length,
-          message: `${allItems.length} POs loaded. Now call spendesk_query_purchase_orders with a SQL WHERE/ORDER clause.`,
+          message: `${allItems.length} POs loaded (raw API shape). Use spendesk_query_purchase_orders with SQL; columns may be nested (e.g. supplier.name).`,
           columns,
         };
       }
