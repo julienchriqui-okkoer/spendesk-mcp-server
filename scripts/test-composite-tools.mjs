@@ -6,8 +6,11 @@
  *   # Server must be running: npm run start:http
  *   node scripts/test-composite-tools.mjs
  *
- *   # With token (if not using SPENDESK_API_TOKEN in .env)
+ *   # With API key (from /ui registration)
  *   X_CLIENT_TOKEN=<clé-api> node scripts/test-composite-tools.mjs
+ *
+ *   # With client credentials (no token in server .env)
+ *   X_SPENDESK_CLIENT_ID=xxx X_SPENDESK_CLIENT_SECRET=yyy node scripts/test-composite-tools.mjs
  *
  *   # Against deployed server
  *   MCP_BASE_URL=https://your-app.railway.app node scripts/test-composite-tools.mjs
@@ -15,6 +18,16 @@
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
 const X_CLIENT_TOKEN = process.env.X_CLIENT_TOKEN?.trim();
+const CLIENT_ID = process.env.X_SPENDESK_CLIENT_ID?.trim();
+const CLIENT_SECRET = process.env.X_SPENDESK_CLIENT_SECRET?.trim();
+
+function getBearerAuth() {
+  if (CLIENT_ID && CLIENT_SECRET) {
+    const b64 = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`, "utf8").toString("base64");
+    return `client_credentials:${b64}`;
+  }
+  return null;
+}
 
 function getHeaders(sessionId, protocolVersion) {
   const h = {
@@ -23,7 +36,9 @@ function getHeaders(sessionId, protocolVersion) {
   };
   if (sessionId) h["mcp-session-id"] = sessionId;
   if (protocolVersion) h["mcp-protocol-version"] = protocolVersion;
-  if (X_CLIENT_TOKEN) h["x-client-token"] = X_CLIENT_TOKEN;
+  const bearer = getBearerAuth();
+  if (bearer) h["Authorization"] = `Bearer ${bearer}`;
+  else if (X_CLIENT_TOKEN) h["x-client-token"] = X_CLIENT_TOKEN;
   return h;
 }
 
@@ -63,7 +78,9 @@ async function mcpCall(sessionId, protocolVersion, toolName, args = {}) {
 
 async function main() {
   console.log("Testing composite tools at", BASE);
-  if (X_CLIENT_TOKEN) console.log("  X-Client-Token:", X_CLIENT_TOKEN.slice(0, 8) + "...");
+  if (CLIENT_ID && CLIENT_SECRET) console.log("  Auth: client credentials (X_SPENDESK_CLIENT_ID + X_SPENDESK_CLIENT_SECRET)");
+  else if (X_CLIENT_TOKEN) console.log("  Auth: X-Client-Token:", X_CLIENT_TOKEN.slice(0, 8) + "...");
+  else console.log("  Auth: none (server fallback env)");
   console.log("");
 
   // Initialize session

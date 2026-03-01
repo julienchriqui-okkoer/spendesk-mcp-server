@@ -217,9 +217,18 @@ Un même client peut avoir **plusieurs companies** (chacune avec son propre toke
 - Les tokens ne sont jamais loggés ou exposés dans les réponses.
 - La validation du token Spendesk est effectuée avant stockage.
 
+#### Credentials fournis par le client (Dust / Claude)
+
+Le **client_id** et **client_secret** Spendesk peuvent être fournis par le client à la connexion, sans les mettre en dur sur Railway :
+
+- **Bearer** : `Authorization: Bearer client_credentials:<base64(client_id:client_secret)>`. Générer avec : `node scripts/generate-dust-bearer.mjs <client_id> <client_secret>` et coller le résultat dans le champ Bearer (ex. dans Dust).
+- **Headers** : `X-Spendesk-Client-Id: <id>` et `X-Spendesk-Client-Secret: <secret>`.
+
+Le serveur appelle alors `POST /v1/auth/token` avec ces identifiants pour la session et renouvelle le token automatiquement sur 401.
+
 #### Mode Fallback
 
-Si aucun header `X-Client-Token` n'est fourni, le serveur utilise en priorité les **client credentials** (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`) s'ils sont définis, sinon le **token Bearer** (`SPENDESK_API_TOKEN`, optionnellement avec `SPENDESK_REFRESH_TOKEN`). Cela permet une compatibilité ascendante avec les déploiements existants.
+Si aucun header d’auth n’est fourni, le serveur utilise les variables d’environnement : **client credentials** (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`) ou **token Bearer** (`SPENDESK_API_TOKEN`, optionnellement `SPENDESK_REFRESH_TOKEN`). Cela permet une compatibilité ascendante avec les déploiements existants.
 
 #### Déploiement (Docker, PaaS)
 
@@ -255,11 +264,13 @@ docker run -p 3000:3000 -e ENCRYPTION_KEY=your_key -e SPENDESK_API_TOKEN=your_to
 Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Responses API) :
 
 1. **Server URL** : `https://votre-domaine.com/mcp` (URL publique de votre déploiement + `/mcp`).
-2. **Authorization** : 
-   - **Mode multi-tenant** : Ajouter le header `X-Client-Token: <clé-api>` à toutes les requêtes (si le client MCP le supporte). Pour cibler une company (multi-company), ajouter aussi `X-Company-Id: <company_key>` (ex. `spendesk-fr`, `spendesk-uk`).
-   - **Dust** : Dust n'envoie que `Authorization: Bearer <token>`. Le serveur accepte ce format. Utilisez **Bearer token** = votre clé API. Pour une company précise, utilisez **Bearer** = `clé-api:company_key` (ex. `b6195ab9-ea5e-486e-80cd-31821c42eaa0:spendesk-fr`). Pour récupérer des données de **plusieurs companies** dans Dust, ajoutez **plusieurs MCP servers** avec la même URL et un Bearer différent par company (ex. un avec `clé:spendesk-fr`, un avec `clé:spendesk-uk`).
-   - **Mode fallback** : Le token Spendesk est dans `SPENDESK_API_TOKEN` côté serveur (pas d'auth HTTP requise).
-   - Pour protéger l'accès, mettre un reverse proxy (auth, API key) devant `/mcp`.
+2. **Authorization** (au choix) :
+   - **Client credentials (fournis par le client, sans rien en dur sur Railway)** : pour que Dust/Claude envoie le client_id et client_secret Spendesk à la connexion :
+     - **Option A — Bearer** : Bearer = `client_credentials:<base64(client_id:client_secret)>`. Générer le token avec : `node scripts/generate-dust-bearer.mjs <client_id> <client_secret>` puis coller la sortie dans le champ Bearer de Dust.
+     - **Option B — Headers** : ajouter les headers `X-Spendesk-Client-Id` et `X-Spendesk-Client-Secret` (section « Networking & Headers » dans Dust). Pas besoin de Bearer dans ce cas.
+   - **Mode multi-tenant (clé API)** : header `X-Client-Token: <clé-api>` (ou Bearer = clé API). La clé est obtenue via le portail `/ui` après avoir enregistré un token Spendesk. Pour une company précise : Bearer = `clé-api:company_key` (ex. `clé:spendesk-fr`).
+   - **Mode fallback** : si aucun header n’est envoyé, le serveur utilise les variables d’environnement (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` ou `SPENDESK_API_TOKEN`).
+   - Pour protéger l’accès, mettre un reverse proxy (auth, API key) devant `/mcp`.
 
 Le client envoie d'abord une requête POST avec le body JSON-RPC `initialize`, récupère le `mcp-session-id` dans les en-têtes de la réponse, puis réutilise ce session ID pour les requêtes suivantes et pour le flux GET SSE.
 

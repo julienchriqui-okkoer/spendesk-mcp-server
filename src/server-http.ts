@@ -15,7 +15,7 @@ import { SpendeskClient } from "./spendesk-api/client.js";
 import { ClientCredentialsAuth } from "./spendesk-api/client-credentials-auth.js";
 import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
-import { authenticateClient } from "./middleware/auth.js";
+import { authenticateClient, type ClientCredentials } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
 import { getRegisterForm, registerClient, getSuccessPage, getCompaniesPage, addCompany, getDocsPage } from "./routes/ui.js";
 
@@ -69,17 +69,33 @@ function getFallbackClientCredentials(baseUrl: string): ClientCredentialsAuth | 
 // Extended session store with client token support
 const sessionStore = new SessionStore();
 
-function buildApi(clientToken?: string): SpendeskClient {
-  const apiToken = clientToken || getApiToken();
+function buildApi(clientToken?: string, clientCredentials?: ClientCredentials): SpendeskClient {
   const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
   const baseUrl =
     process.env.SPENDESK_BASE_URL ||
     (useDemo ? "https://beta-sandbox.api.trunk.spendesk.services" : "https://public-api.spendesk.com");
 
-  const hasCredentials = getClientId() && getClientSecret();
-  if (!apiToken && !getRefreshToken() && !hasCredentials) {
+  // 1) Credentials provided by client at connection time (Dust/Claude)
+  if (clientCredentials) {
+    const cc = new ClientCredentialsAuth({
+      baseUrl,
+      clientId: clientCredentials.clientId,
+      clientSecret: clientCredentials.clientSecret,
+    });
+    return new SpendeskClient({
+      apiToken: "",
+      useDemo,
+      baseUrl,
+      getToken: () => cc.getAccessToken(),
+      on401Refresh: () => cc.refresh(),
+    });
+  }
+
+  const apiToken = clientToken || getApiToken();
+  const hasEnvCredentials = getClientId() && getClientSecret();
+  if (!apiToken && !getRefreshToken() && !hasEnvCredentials) {
     throw new Error(
-      "No Spendesk API credentials. Provide X-Client-Token header, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET (client_credentials), or SPENDESK_API_TOKEN (and optionally SPENDESK_REFRESH_TOKEN)."
+      "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, X-Client-Token (API key), or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET / SPENDESK_API_TOKEN in env."
     );
   }
 
@@ -259,19 +275,19 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
     }
 
     if (!sessionId && isInitializeRequest(req.body)) {
-      // Get client token from request (set by middleware) or use env fallback
       const clientToken = req.clientToken;
-      
+      const clientCredentials = req.clientCredentials;
+
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (transport) {
-            sessionStore.set(id, transport, clientToken, req.clientApiKey, req.companyId);
+            sessionStore.set(id, transport, clientToken, req.clientApiKey, req.companyId, clientCredentials);
           }
         },
       });
-      
-      const api = buildApi(clientToken);
+
+      const api = buildApi(clientToken, clientCredentials);
       const mcp = createMcpServer(api);
       await mcp.connect(transport);
       await transport.handleRequest(req, res, req.body);
