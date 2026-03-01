@@ -506,6 +506,17 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         const result = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
           listKey: "purchaseOrders",
         });
+        // Debug: log raw PO size per field (set PO_DEBUG=1 to enable)
+        if (process.env.PO_DEBUG === "1" && result.data.length > 0) {
+          const raw = result.data;
+          const first = raw[0] as Record<string, unknown>;
+          const rawSize = JSON.stringify(first).length;
+          console.log(`[PO Debug] Raw size for 1 PO: ${rawSize} bytes`);
+          console.log("[PO Debug] Keys and sizes:");
+          Object.entries(first ?? {}).forEach(([key, value]) => {
+            console.log(`  ${key}: ${JSON.stringify(value).length} bytes`);
+          });
+        }
         return {
           data: result.data.map((po) => sanitizePurchaseOrder(po)),
           meta: result.meta,
