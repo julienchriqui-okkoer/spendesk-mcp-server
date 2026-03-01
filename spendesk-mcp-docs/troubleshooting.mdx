@@ -41,7 +41,7 @@ A tool returns an error or times out when you use a very large date range (e.g. 
   <Accordion title="MCP server not found in Claude / Cursor">
 The AI assistant does not list or use the Spendesk MCP server. Use this checklist:
 
-1. **URL** — Confirm the MCP server URL is correct (e.g. `https://mcp.spendesk.com/mcp`) and that your deployment is reachable from the machine running the assistant.
+1. **URL** — Confirm the MCP server URL is correct: `https://spendesk-mcp-server-production.up.railway.app/mcp` (and that it is reachable from the machine or client running the assistant).
 2. **Auth** — Ensure the Bearer token (or client credentials) is set in the right place (headers or auth field) and that the value is not empty or truncated.
 3. **Sync / reload** — In Claude Desktop or Cursor, sync or reload MCP servers so the new config is picked up.
 4. **Restart** — Restart the AI assistant app after changing the MCP config, then try a simple prompt (e.g. “What tools do you have?” or “Top 5 suppliers this quarter”).

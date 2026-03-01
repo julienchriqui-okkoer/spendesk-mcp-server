@@ -16,7 +16,7 @@ description: Generate a Spendesk token, connect your AI assistant (Claude, Curso
 
 ## Step 2: Connect your AI assistant
 
-Configure the MCP server in your assistant. Use the URL and auth below.
+Configure the MCP server in your assistant. Use the URL and auth below. For **Dust**, see the dedicated [Connect with Dust](/connect-dust) page.
 
 <Tabs>
   <Tab title="Claude">
@@ -26,7 +26,7 @@ Add the Spendesk MCP server in Claude (e.g. Claude Desktop or API). Example conf
 {
   "mcpServers": {
     "spendesk": {
-      "url": "https://mcp.spendesk.com/mcp",
+      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_SPENDESK_TOKEN_HERE"
       }
@@ -44,7 +44,7 @@ In Cursor, add the MCP server (Settings → MCP). Example:
 {
   "mcpServers": {
     "spendesk": {
-      "url": "https://mcp.spendesk.com/mcp",
+      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_SPENDESK_TOKEN_HERE"
       }
@@ -60,7 +60,7 @@ In ChatGPT (or your MCP-enabled client), configure the server URL and auth:
 
 ```json
 {
-  "url": "https://mcp.spendesk.com/mcp",
+  "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
   "headers": {
     "Authorization": "Bearer YOUR_SPENDESK_TOKEN_HERE"
   }

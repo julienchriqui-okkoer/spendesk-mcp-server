@@ -18,7 +18,7 @@
     { "name": "API Reference", "url": "https://developer.spendesk.com/reference/general" }
   ],
   "navigation": [
-    { "group": "Getting started", "pages": ["introduction", "quickstart", "use-cases"] },
+    { "group": "Getting started", "pages": ["introduction", "quickstart", "connect-dust", "use-cases"] },
     {
       "group": "Tools",
       "pages": [
