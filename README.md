@@ -219,7 +219,7 @@ Un même client peut avoir **plusieurs companies** (chacune avec son propre toke
 
 #### Mode Fallback
 
-Si aucun header `X-Client-Token` n'est fourni, le serveur utilise `SPENDESK_API_TOKEN` (variable d'environnement) en mode fallback. Cela permet une compatibilité ascendante avec les déploiements existants.
+Si aucun header `X-Client-Token` n'est fourni, le serveur utilise en priorité les **client credentials** (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`) s'ils sont définis, sinon le **token Bearer** (`SPENDESK_API_TOKEN`, optionnellement avec `SPENDESK_REFRESH_TOKEN`). Cela permet une compatibilité ascendante avec les déploiements existants.
 
 #### Déploiement (Docker, PaaS)
 
@@ -236,7 +236,9 @@ docker run -p 3000:3000 -e ENCRYPTION_KEY=your_key -e SPENDESK_API_TOKEN=your_to
 2. **Build** : Railway détecte le **Dockerfile** et build l'image, ou utilise `railway.json` (build : `npm ci && npm run build`, start : `node dist/server-http.js`). Si un Dockerfile est présent, il est utilisé en priorité.
 3. **Variables d'environnement** (Settings → Variables) :
    - `ENCRYPTION_KEY` (obligatoire pour multi-tenant) — générer avec `node scripts/generate-encryption-key.mjs`.
-   - `SPENDESK_API_TOKEN` (optionnel) — token API Spendesk en mode fallback uniquement.
+   - **Auth Spendesk** (au moins une option pour le mode fallback) :
+     - **Option A — Client credentials** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (récupérés depuis le dashboard Spendesk). Le serveur appelle `POST /v1/auth/token` avec Basic auth et renouvelle le token automatiquement.
+     - **Option B — Token Bearer** : `SPENDESK_API_TOKEN` (token API Spendesk). Optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401.
    - `ALLOWED_HOSTS` (recommandé) — host(s) autorisés pour la validation DNS rebinding, ex. : `votre-service.railway.app` (sans `https://`). Tu peux récupérer le domaine après le premier déploiement (Settings → Networking → Generate domain).
 4. **Domaine** : Settings → Networking → Generate domain. L'URL MCP sera `https://<ton-domaine>.railway.app/mcp`, le portail sera sur `https://<ton-domaine>.railway.app/ui`.
 5. **Vérifier** : `MCP_BASE_URL=https://<ton-domaine>.railway.app node scripts/test-mcp-http.mjs`
@@ -244,7 +246,7 @@ docker run -p 3000:3000 -e ENCRYPTION_KEY=your_key -e SPENDESK_API_TOKEN=your_to
 **Render / Fly.io**
 
 - Déployer le dépôt (build : `npm ci && npm run build`, start : `node dist/server-http.js`).
-- Définir `ENCRYPTION_KEY` (obligatoire), `SPENDESK_API_TOKEN` (optionnel), et, si besoin, `ALLOWED_HOSTS` (domaine public de l'app).
+- Définir `ENCRYPTION_KEY` (obligatoire), puis soit `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`, soit `SPENDESK_API_TOKEN` (optionnel), et, si besoin, `ALLOWED_HOSTS` (domaine public de l'app).
 - L'URL du serveur MCP : `https://votre-app.onrender.com/mcp` (ou ton domaine + `/mcp`).
 - Le portail : `https://votre-app.onrender.com/ui` (ou ton domaine + `/ui`).
 

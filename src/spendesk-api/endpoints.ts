@@ -19,8 +19,10 @@ export const SpendeskPaths = {
   getWalletLoads: `${V1}/wallet-loads`,
   getWalletSummary: `${V1}/wallet/summary`,
 
-  // Authentication (API token)
+  // Authentication (API token / client credentials)
   createAccessToken: `${V1}/auth/access-token`,
+  /** POST with Basic(client_id:client_secret) + body { grant_type: "client_credentials" } */
+  authToken: `${V1}/auth/token`,
 
   // Analytical (doc: Get Analytical Fields, Get Analytical Values — kebab-case comme cost-centers / expense-categories)
   getAnalyticalFields: `${V1}/analytical-fields`,

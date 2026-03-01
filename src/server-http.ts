@@ -12,6 +12,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { SpendeskClient } from "./spendesk-api/client.js";
+import { ClientCredentialsAuth } from "./spendesk-api/client-credentials-auth.js";
 import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient } from "./middleware/auth.js";
@@ -26,7 +27,16 @@ function getRefreshToken(): string | null {
   return process.env.SPENDESK_REFRESH_TOKEN || null;
 }
 
+function getClientId(): string | null {
+  return process.env.SPENDESK_CLIENT_ID?.trim() || null;
+}
+
+function getClientSecret(): string | null {
+  return process.env.SPENDESK_CLIENT_SECRET?.trim() || null;
+}
+
 let fallbackTokenManager: TokenManager | null = null;
+let fallbackClientCredentials: ClientCredentialsAuth | null = null;
 
 function getFallbackTokenManager(baseUrl: string): TokenManager | null {
   const access = getApiToken();
@@ -42,29 +52,58 @@ function getFallbackTokenManager(baseUrl: string): TokenManager | null {
   return fallbackTokenManager;
 }
 
+function getFallbackClientCredentials(baseUrl: string): ClientCredentialsAuth | null {
+  const id = getClientId();
+  const secret = getClientSecret();
+  if (!id || !secret) return null;
+  if (!fallbackClientCredentials) {
+    fallbackClientCredentials = new ClientCredentialsAuth({
+      baseUrl,
+      clientId: id,
+      clientSecret: secret,
+    });
+  }
+  return fallbackClientCredentials;
+}
+
 // Extended session store with client token support
 const sessionStore = new SessionStore();
 
 function buildApi(clientToken?: string): SpendeskClient {
   const apiToken = clientToken || getApiToken();
-  if (!apiToken && !getRefreshToken()) {
-    throw new Error(
-      "No Spendesk API token available. Either provide X-Client-Token header or set SPENDESK_API_TOKEN (and optionally SPENDESK_REFRESH_TOKEN for OAuth refresh) environment variable."
-    );
-  }
   const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
   const baseUrl =
     process.env.SPENDESK_BASE_URL ||
     (useDemo ? "https://beta-sandbox.api.trunk.spendesk.services" : "https://public-api.spendesk.com");
-  const tm = !clientToken ? getFallbackTokenManager(baseUrl) : null;
-  if (tm) {
-    return new SpendeskClient({
-      apiToken: apiToken || "",
-      useDemo,
-      baseUrl,
-      getToken: () => tm.getAccessToken(),
-      on401Refresh: () => tm.refresh(),
-    });
+
+  const hasCredentials = getClientId() && getClientSecret();
+  if (!apiToken && !getRefreshToken() && !hasCredentials) {
+    throw new Error(
+      "No Spendesk API credentials. Provide X-Client-Token header, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET (client_credentials), or SPENDESK_API_TOKEN (and optionally SPENDESK_REFRESH_TOKEN)."
+    );
+  }
+
+  if (!clientToken) {
+    const cc = getFallbackClientCredentials(baseUrl);
+    if (cc) {
+      return new SpendeskClient({
+        apiToken: "",
+        useDemo,
+        baseUrl,
+        getToken: () => cc.getAccessToken(),
+        on401Refresh: () => cc.refresh(),
+      });
+    }
+    const tm = getFallbackTokenManager(baseUrl);
+    if (tm) {
+      return new SpendeskClient({
+        apiToken: apiToken || "",
+        useDemo,
+        baseUrl,
+        getToken: () => tm.getAccessToken(),
+        on401Refresh: () => tm.refresh(),
+      });
+    }
   }
   return new SpendeskClient({ apiToken: apiToken!, useDemo, baseUrl });
 }
