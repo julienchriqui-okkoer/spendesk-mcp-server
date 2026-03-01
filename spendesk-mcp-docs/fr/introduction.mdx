@@ -1,0 +1,40 @@
+---
+title: Introduction
+description: Connectez Spendesk à votre assistant IA. Analyses de dépenses, AP aging et données de clôture en un seul endroit—sans export ni tableur.
+---
+
+Spendesk MCP connecte vos données Spendesk aux assistants IA comme Claude, Cursor et ChatGPT. Posez des questions en langage naturel et obtenez des réponses à partir de vos dépenses, payables et fournisseurs. Conçu pour les équipes Finance : DAF, contrôle de gestion, contrôleurs et comptables.
+
+<CardGroup cols={2}>
+  <Card title="Analyse de dépenses" icon="chart-pie">
+    Agrégation des dépenses par fournisseur, centre de coût, département ou dimensions analytiques. Top fournisseurs, budget vs réalisé, tendances dans le temps.
+  </Card>
+  <Card title="AP & aging" icon="clock">
+    Factures en retard, statut de paiement (payé / impayé / partiel), prévisions de trésorerie. Tranches d'aging (0–30, 31–60, 61–90, 90+ jours) et DSO.
+  </Card>
+  <Card title="Clôture mensuelle" icon="book">
+    Suivi du pipeline compta : créés, préparés, exportés. Détail TVA et données type écritures pour la clôture.
+  </Card>
+  <Card title="Gestion fournisseurs" icon="building">
+    Répertoire fournisseurs, commandes d'achat, dépenses par fournisseur. Recherche d'IDs et filtres par fournisseur ou PO.
+  </Card>
+</CardGroup>
+
+## Pour qui
+
+| Rôle | Cas d'usage |
+|------|-------------|
+| **DAF** | Position de trésorerie, AP en retard, prévision de trésorerie, dépenses par département ou fournisseur. |
+| **Contrôleur de gestion** | Dépenses par centre de coût ou champ analytique, tendances mensuelles, budget vs réalisé. |
+| **Contrôleur** | Pipeline compta, factures non encore exportées, détail TVA, écritures pour la clôture. |
+| **Responsable comptabilité** | Statut de paiement, factures impayées, règlements, données de référence fournisseurs et PO. |
+
+## Fonctionnement
+
+Le serveur MCP Spendesk se situe entre votre assistant IA et l'API publique Spendesk. À chaque question, l'assistant choisit l'outil adapté (analyse de dépenses, AP aging, etc.), le serveur appelle Spendesk avec vos identifiants, et la réponse est transformée en réponse claire.
+
+<Note>
+  Le serveur MCP est **en lecture seule**. Il ne crée ni n'approuve de paiements, ne modifie pas les factures ni les données Spendesk. Utilisez-le pour le reporting, l'analyse et la consultation.
+</Note>
+
+L'authentification est par token (OAuth 2.0 ou token API). Vous générez un token dans Spendesk (Paramètres → Intégrations → Accès API) et vous le configurez une fois dans votre client IA. Le serveur utilise ce token pour lire les données en votre nom.

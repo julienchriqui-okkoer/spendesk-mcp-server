@@ -1,0 +1,56 @@
+---
+title: Quickstart
+description: Générer un token Spendesk, puis connecter Dust ou Claude au MCP en quelques étapes.
+---
+
+## Étape 1 — Obtenir un token Spendesk
+
+1. Connectez-vous à [Spendesk](https://app.spendesk.com) (ou votre domaine Spendesk).
+2. Allez dans **Paramètres** → **Intégrations** → **Gestion d'accès API**.
+3. Créez un token API ou récupérez vos **Client ID** et **Client Secret** (OAuth 2.0).
+4. Copiez le token (ou les deux identifiants) pour l'étape suivante.
+
+<Note>
+  Avec Client ID + Client Secret, vous devrez générer une chaîne Bearer (voir les guides Dust ou Claude ci-dessous).
+</Note>
+
+---
+
+## Étape 2 — Connecter votre assistant
+
+Choisissez votre outil et suivez le guide dédié (configuration pas à pas et navigation) :
+
+<CardGroup cols={2}>
+  <Card title="Utiliser le MCP avec Dust" icon="building" href="/fr/use-with-dust">
+    Configuration dans Dust (app.dust.tt) : URL, Bearer ou headers, sync, et exemples de cas d'usage avec captures.
+  </Card>
+  <Card title="Utiliser le MCP avec Claude" icon="message-bot" href="/fr/use-with-claude">
+    Configuration avec Claude Desktop : URL, headers Authorization, et exemples de cas d'usage avec captures.
+  </Card>
+</CardGroup>
+
+---
+
+## Étape 3 — Tester avec un premier prompt
+
+Une fois le MCP configuré, essayez par exemple :
+
+**Top fournisseurs**
+
+```
+Quels sont nos 10 plus gros fournisseurs par montant dépensé ce trimestre ?
+```
+
+**Factures en retard**
+
+```
+Liste les factures en retard de paiement et le montant total en retard.
+```
+
+**Position de trésorerie**
+
+```
+Donne-moi la position de trésorerie : en retard, dû aujourd'hui, et dû dans les 7 et 30 prochains jours.
+```
+
+L'assistant appellera les outils Spendesk (ex. `spendesk_analyze_spend`, `spendesk_get_ap_aging`, `spendesk_get_cash_position`) et affichera les résultats à partir de vos données Spendesk.

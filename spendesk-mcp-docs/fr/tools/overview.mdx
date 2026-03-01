@@ -1,0 +1,42 @@
+---
+title: Vue d'ensemble des outils
+description: Résumé des outils MCP composites et de base pour Spendesk. Privilégiez les outils composites pour l'analyse.
+---
+
+Le MCP Spendesk expose des **outils composites** (haut niveau, prêts pour l'analyse) et des **outils API de base** (plus bas niveau, pour des requêtes personnalisées). Pour la plupart des cas Finance, commencez par les outils composites.
+
+<Tip>
+  Privilégiez les outils composites pour l'analyse de dépenses, l'AP aging, le pipeline compta et la trésorerie. Ils gèrent les plages de dates, la pagination et l'agrégation.
+</Tip>
+
+## Outils composites (6)
+
+| Outil | Description | Idéal pour |
+|------|-------------|------------|
+| `spendesk_analyze_spend` | Agrégation des dépenses par fournisseur, centre de coût, mois, employé, pays, devise, champ analytique, type de payable, statut compta, statut paiement. Filtres possibles. | Top fournisseurs, dépenses par département, budget vs réalisé. |
+| `spendesk_get_bookkeeping_pipeline` | Factures par statut compta (créé / préparé / exporté). Détail TVA et sortie type écritures en option. | Clôture, en attente d'export, TVA. |
+| `spendesk_get_payment_status` | Factures payées, impayées ou partiellement payées. Filtre devise en option. | Liste impayés, rapprochement. |
+| `spendesk_get_ap_aging` | Tranches d'aging AP (0–30, 31–60, 61–90, 90+ jours). Payables à venir en option. | Rapport de retard, DSO, aging. |
+| `spendesk_get_cash_flow_forecast` | Sorties de trésorerie à venir à partir des factures impayées. Regroupement par jour, semaine ou fournisseur. | Trésorerie, prévision de décaissements. |
+| `spendesk_get_cash_position` | Vue type dashboard CFO : en retard, dû aujourd'hui, 7 j, 30 j, total en cours, principaux paiements urgents. | Engagements de trésorerie en un coup d'œil. |
+
+## Outils API de base (12)
+
+Pour les données de référence (fournisseurs, centres de coût, champs analytiques, PO), utilisez les outils de base pour récupérer les IDs, puis passez ces IDs dans les outils composites (filtres de `spendesk_analyze_spend`) si besoin.
+
+| Outil | Description |
+|------|-------------|
+| `spendesk_get_settlements` | Règlements au niveau banque. |
+| `spendesk_create_payables_snapshot` | Créer un snapshot de payables (max 31 jours). |
+| `spendesk_get_payables_snapshot` | Récupérer les payables d'un snapshot (paginé). |
+| `spendesk_get_payable` | Un payable par ID. |
+| `spendesk_get_payable_attachments` | Pièces jointes et PDF. |
+| `spendesk_get_purchase_orders` | Liste des PO. |
+| `spendesk_get_suppliers` | Répertoire fournisseurs. |
+| `spendesk_get_supplier` | Un fournisseur par ID. |
+| `spendesk_get_users` | Utilisateurs et approbateurs. |
+| `spendesk_get_user` | Un utilisateur par ID. |
+| `spendesk_get_cost_centers` | Structure des centres de coût. |
+| `spendesk_get_analytical_fields` | Champs analytiques personnalisés. |
+| `spendesk_get_analytical_values` | Valeurs pour un champ analytique. |
+| `spendesk_get_api_reference` | Liste des endpoints et paramètres de l'API. |

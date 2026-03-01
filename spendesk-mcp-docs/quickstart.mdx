@@ -1,56 +1,56 @@
 ---
 title: Quickstart
-description: Générer un token Spendesk, puis connecter Dust ou Claude au MCP en quelques étapes.
+description: Generate a Spendesk token, then connect Dust or Claude to the MCP in a few steps.
 ---
 
-## Étape 1 — Obtenir un token Spendesk
+## Step 1 — Get a Spendesk token
 
-1. Connectez-vous à [Spendesk](https://app.spendesk.com) (ou votre domaine Spendesk).
-2. Allez dans **Paramètres** → **Intégrations** → **Gestion d'accès API**.
-3. Créez un token API ou récupérez vos **Client ID** et **Client Secret** (OAuth 2.0).
-4. Copiez le token (ou les deux identifiants) pour l'étape suivante.
+1. Log in to [Spendesk](https://app.spendesk.com) (or your Spendesk domain).
+2. Go to **Settings** → **Integrations** → **API access management**.
+3. Create an API token or get your **Client ID** and **Client Secret** (OAuth 2.0).
+4. Copy the token (or both credentials) for the next step.
 
 <Note>
-  Avec Client ID + Client Secret, vous devrez générer une chaîne Bearer (voir les guides Dust ou Claude ci-dessous).
+  With Client ID + Client Secret, you will need to generate a Bearer string (see the Dust or Claude guides below).
 </Note>
 
 ---
 
-## Étape 2 — Connecter votre assistant
+## Step 2 — Connect your assistant
 
-Choisissez votre outil et suivez le guide dédié (configuration pas à pas et navigation) :
+Choose your tool and follow the dedicated guide (step-by-step configuration and navigation):
 
 <CardGroup cols={2}>
-  <Card title="Utiliser le MCP avec Dust" icon="building" href="/use-with-dust">
-    Configuration dans Dust (app.dust.tt) : URL, Bearer ou headers, sync, et exemples de cas d'usage avec captures.
+  <Card title="Use the MCP with Dust" icon="building" href="/use-with-dust">
+    Configuration in Dust (app.dust.tt): URL, Bearer or headers, sync, and example use cases with screenshots.
   </Card>
-  <Card title="Utiliser le MCP avec Claude" icon="message-bot" href="/use-with-claude">
-    Configuration avec Claude Desktop : URL, headers Authorization, et exemples de cas d'usage avec captures.
+  <Card title="Use the MCP with Claude" icon="message-bot" href="/use-with-claude">
+    Configuration with Claude Desktop: URL, Authorization headers, and example use cases with screenshots.
   </Card>
 </CardGroup>
 
 ---
 
-## Étape 3 — Tester avec un premier prompt
+## Step 3 — Try your first prompt
 
-Une fois le MCP configuré, essayez par exemple :
+Once the MCP is configured, try for example:
 
-**Top fournisseurs**
-
-```
-Quels sont nos 10 plus gros fournisseurs par montant dépensé ce trimestre ?
-```
-
-**Factures en retard**
+**Top suppliers**
 
 ```
-Liste les factures en retard de paiement et le montant total en retard.
+What are our top 10 suppliers by spend this quarter?
 ```
 
-**Position de trésorerie**
+**Overdue invoices**
 
 ```
-Donne-moi la position de trésorerie : en retard, dû aujourd'hui, et dû dans les 7 et 30 prochains jours.
+List overdue payables and total amount past due.
 ```
 
-L'assistant appellera les outils Spendesk (ex. `spendesk_analyze_spend`, `spendesk_get_ap_aging`, `spendesk_get_cash_position`) et affichera les résultats à partir de vos données Spendesk.
+**Cash position**
+
+```
+Give me the cash position: overdue, due today, and due in the next 7 and 30 days.
+```
+
+The assistant will call Spendesk tools (e.g. `spendesk_analyze_spend`, `spendesk_get_ap_aging`, `spendesk_get_cash_position`) and return results from your Spendesk data.

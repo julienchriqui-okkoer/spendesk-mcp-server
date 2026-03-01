@@ -1,0 +1,87 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Spendesk MCP",
+  "colors": {
+    "primary": "#1D4ED8",
+    "light": "#1D4ED8",
+    "dark": "#3B82F6"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "anchors": [
+          {
+            "anchor": "Documentation",
+            "icon": "book-open",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": ["introduction", "quickstart", "use-with-dust", "use-with-claude", "use-cases"]
+              },
+              {
+                "group": "Tools",
+                "pages": ["tools/overview", "tools/spend-analysis", "tools/accounts-payable", "tools/bookkeeping", "tools/reference-data"]
+              },
+              {
+                "group": "Support",
+                "pages": ["troubleshooting", "changelog"]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "language": "fr",
+        "anchors": [
+          {
+            "anchor": "Documentation",
+            "icon": "book-open",
+            "groups": [
+              {
+                "group": "Démarrage",
+                "pages": ["fr/introduction", "fr/quickstart", "fr/use-with-dust", "fr/use-with-claude", "fr/use-cases"]
+              },
+              {
+                "group": "Outils",
+                "pages": ["fr/tools/overview", "fr/tools/spend-analysis", "fr/tools/accounts-payable", "fr/tools/bookkeeping", "fr/tools/reference-data"]
+              },
+              {
+                "group": "Support",
+                "pages": ["fr/troubleshooting", "fr/changelog"]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Spendesk",
+          "href": "https://www.spendesk.com"
+        },
+        {
+          "anchor": "API Reference",
+          "href": "https://developer.spendesk.com/reference/general"
+        }
+      ]
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Spendesk",
+        "href": "https://www.spendesk.com"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "twitter": "https://twitter.com/spendesk",
+      "linkedin": "https://www.linkedin.com/company/spendesk"
+    }
+  }
+}

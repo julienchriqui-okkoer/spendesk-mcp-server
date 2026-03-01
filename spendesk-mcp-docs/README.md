@@ -2,6 +2,8 @@
 
 Documentation Mintlify du serveur Spendesk MCP. Prévisualisation locale et déploiement sur Railway.
 
+La documentation est disponible en **anglais** (par défaut) et en **français**. Un sélecteur de langue (icône globe) apparaît dans la barre de navigation pour basculer entre les deux langues. La configuration multilingue est définie dans `docs.json` (tableau `navigation.languages`).
+
 ## Prévisualisation locale
 
 ```bash

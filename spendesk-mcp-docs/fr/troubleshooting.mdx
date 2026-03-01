@@ -1,0 +1,49 @@
+---
+title: Dépannage
+description: Corriger les erreurs 401, 403, résultats vides, conflits 409 snapshot, plages de dates trop larges et problèmes de connexion MCP.
+---
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized — token expiré ou invalide">
+Le serveur n'a pas pu s'authentifier auprès de Spendesk. Causes fréquentes :
+
+- **Token expiré** — Les tokens API et OAuth ont une durée de vie limitée. Régénérez un nouveau token dans Spendesk.
+- **Mauvais token** — Vérifiez que vous utilisez le token (ou les identifiants client) au bon endroit : header Bearer ou les headers attendus par votre déploiement.
+
+**Correction :** Dans Spendesk, allez dans **Paramètres** → **Intégrations** → **Gestion d'accès API**. Créez un nouveau token API ou actualisez les identifiants OAuth. Mettez à jour le token dans la config de votre assistant (Claude, Cursor, ChatGPT ou Dust) et réessayez.
+  </Accordion>
+  <Accordion title="403 Forbidden — permissions manquantes">
+Spendesk a accepté la requête mais a refusé l'accès. Votre token ou rôle n'a pas les scopes requis.
+
+**Requis :** Le token doit avoir un accès en lecture aux ressources interrogées (payables, règlements, fournisseurs, utilisateurs). Dans Spendesk, le token API ou l'app OAuth est lié à un compte avec des permissions spécifiques.
+
+**Correction :** Dans Spendesk, vérifiez que l'utilisateur ou l'app qui possède le token a au moins l'accès **lecture** aux Payables, Règlements, Fournisseurs et autres données nécessaires.
+  </Accordion>
+  <Accordion title="Aucun résultat">
+Vous obtenez une liste vide ou « aucun payable » alors que vous attendez des données. Causes possibles :
+
+1. **Plage de dates** — La période (`from` / `to`) peut ne contenir aucun payable. Essayez une plage plus large.
+2. **Filtres trop stricts** — Les filtres (fournisseur, centre de coût, devise) peuvent ne correspondre à aucun payable. Assouplissez ou retirez des filtres.
+3. **Données vides dans Spendesk** — Vérifiez dans l'interface Spendesk.
+
+**Correction :** Lancez d'abord une requête large (ex. dépenses par fournisseur sur un trimestre sans filtre). Si vous avez des données, réduisez la plage ou les filtres progressivement.
+  </Accordion>
+  <Accordion title="409 Conflict (snapshot)">
+La création d'un snapshot payables a échoué car un autre snapshot est en cours ou le système est occupé.
+
+**Correction :** Attendez environ 30 secondes et réessayez. Évitez de lancer plusieurs outils basés sur un snapshot en rafale.
+  </Accordion>
+  <Accordion title="Plage de dates trop large">
+Une erreur ou un timeout avec une plage très large (ex. une année).
+
+**Correction :** Découpez en trimestres ou mois. Le snapshot payables supporte typiquement jusqu'à 31 jours par snapshot.
+  </Accordion>
+  <Accordion title="Serveur MCP introuvable dans Claude / Cursor">
+L'assistant ne liste ou n'utilise pas le serveur MCP Spendesk. Vérifiez :
+
+1. **URL** — Confirmez que l'URL est correcte : `https://spendesk-mcp-server-production.up.railway.app/mcp`.
+2. **Auth** — Vérifiez que le Bearer token (ou identifiants client) est bien configuré et non tronqué.
+3. **Sync / rechargement** — Synchronisez ou rechargez les serveurs MCP dans Claude ou Cursor.
+4. **Redémarrage** — Redémarrez l'application après modification de la config MCP.
+  </Accordion>
+</AccordionGroup>
