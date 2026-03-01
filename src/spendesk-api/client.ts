@@ -6,6 +6,7 @@
  */
 
 import { convertAmountsInResponse } from "../lib/amounts.js";
+import { sanitizePurchaseOrder } from "../lib/sanitize-purchase-order.js";
 
 const DEFAULT_BASE_URL = "https://public-api.spendesk.com";
 const DEFAULT_DEMO_BASE_URL = "https://beta-sandbox.api.trunk.spendesk.services";
@@ -75,9 +76,6 @@ export class SpendeskClient {
       Object.entries(options.searchParams).forEach(([k, v]) =>
         url.searchParams.set(k, v)
       );
-      if (path.includes("purchase-orders")) {
-        console.log("[DEBUG] Purchase Orders URL:", url.toString());
-      }
     }
     const token = await this.getAuthToken();
     const headers: Record<string, string> = {
@@ -107,6 +105,28 @@ export class SpendeskClient {
       data = text ? (JSON.parse(text) as T) : ({} as T);
     } catch {
       data = text as unknown as T;
+    }
+    // Truncate purchase-orders at source so MCP never sees huge payload (lineItems[], payables[], etc.)
+    if (method === "GET" && path.includes("purchase-orders") && data && typeof data === "object") {
+      const d = data as Record<string, unknown>;
+      let list: unknown[] | undefined = d.purchaseOrders as unknown[] | undefined;
+      let target: Record<string, unknown> | undefined = d;
+      let key: string = "purchaseOrders";
+      if (!Array.isArray(list)) {
+        list = d.data as unknown[] | undefined;
+        key = "data";
+      }
+      if (!Array.isArray(list) && d.result && typeof d.result === "object") {
+        const res = d.result as Record<string, unknown>;
+        list = res.data as unknown[] | undefined;
+        if (Array.isArray(list)) {
+          target = res;
+          key = "data";
+        }
+      }
+      if (Array.isArray(list) && target) {
+        target[key] = list.map((po: unknown) => sanitizePurchaseOrder(po));
+      }
     }
     if (res.status === 401 && this.on401Refresh && !is401Retry) {
       await this.on401Refresh();

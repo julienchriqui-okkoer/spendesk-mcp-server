@@ -16,14 +16,15 @@ export function sanitizePurchaseOrder(po: any): Record<string, unknown> {
   const description = (po?.description ?? "").substring(0, 150);
 
   const supplierName =
-    (supplier as any)?.name ?? (supplier as any)?.supplierName ?? null;
+    po?.supplierName ?? (supplier as any)?.name ?? (supplier as any)?.supplierName ?? null;
   const requesterName =
-    requester != null
+    po?.requesterName ??
+    (requester != null
       ? [(requester as any)?.firstName ?? (requester as any)?.first_name, (requester as any)?.lastName ?? (requester as any)?.last_name]
           .filter(Boolean)
           .join(" ")
           .trim() || null
-      : null;
+      : null);
 
   return {
     id: po?.id,
@@ -33,18 +34,18 @@ export function sanitizePurchaseOrder(po: any): Record<string, unknown> {
     createdAt: po?.createdAt ?? po?.created_at,
     startDate: po?.startDate ?? po?.start_date ?? null,
     endDate: po?.endDate ?? po?.end_date ?? null,
-    supplierId: (supplier as any)?.id ?? null,
+    supplierId: po?.supplierId ?? (supplier as any)?.id ?? null,
     supplierName,
-    requesterId: (requester as any)?.id ?? po?.userId ?? null,
+    requesterId: po?.requesterId ?? (requester as any)?.id ?? po?.userId ?? null,
     requesterName,
-    costCenterId: (costCenter as any)?.id ?? null,
-    costCenterName: (costCenter as any)?.name ?? null,
+    costCenterId: po?.costCenterId ?? (costCenter as any)?.id ?? null,
+    costCenterName: po?.costCenterName ?? (costCenter as any)?.name ?? null,
     currency: po?.currency,
     totalAmount: totalAmount ?? 0,
     amountInvoiced: amountInvoiced ?? 0,
     remainingAmount: (totalAmount ?? 0) - (amountInvoiced ?? 0),
     description: description || null,
-    lineItemsCount: Array.isArray(lineItems) ? lineItems.length : 0,
-    payablesCount: Array.isArray(payables) ? payables.length : 0,
+    lineItemsCount: po?.lineItemsCount ?? (Array.isArray(lineItems) ? lineItems.length : 0),
+    payablesCount: po?.payablesCount ?? (Array.isArray(payables) ? payables.length : 0),
   };
 }

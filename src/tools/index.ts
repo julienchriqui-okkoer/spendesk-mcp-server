@@ -503,23 +503,48 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           filters?: Record<string, unknown>;
         });
         const { page: _p3, perPage: _pp3, ...basePo } = poParams;
-        const result = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
+        let result = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
           listKey: "purchaseOrders",
         });
-        // Debug: log raw PO size per field (set PO_DEBUG=1 to enable)
-        if (process.env.PO_DEBUG === "1" && result.data.length > 0) {
-          const poRaw = result.data[0] as Record<string, unknown>;
-          console.log("[PO Debug] PO raw size:", JSON.stringify(poRaw).length);
-          console.log("[PO Debug] PO keys:", Object.keys(poRaw ?? {}).join(", "));
-          console.log(
-            "[PO Debug] Field sizes:",
-            JSON.stringify(
-              Object.fromEntries(
-                Object.entries(poRaw ?? {}).map(([k, v]) => [k, JSON.stringify(v).length])
-              )
-            )
-          );
+        // Defensive: if framework passed pre-serialized string, parse before use
+        if (typeof result === "string") {
+          try {
+            result = JSON.parse(result) as typeof result;
+          } catch {
+            return { data: [], meta: { pagination: { total: 0, pageSize: 0 } } };
+          }
         }
+        if (typeof result.data === "string") {
+          try {
+            result = { ...result, data: JSON.parse(result.data) as unknown[] };
+          } catch {
+            result = { ...result, data: [] };
+          }
+        }
+        // Diagnostic: is raw already a string / what shape do we have? (set PO_DEBUG=1)
+        if (process.env.PO_DEBUG === "1") {
+          const raw = result.data;
+          console.log("[PO] typeof result:", typeof result);
+          console.log("[PO] typeof result.data:", typeof raw);
+          console.log("[PO] result keys:", Object.keys(result ?? {}).join(", "));
+          if (Array.isArray(raw) && raw.length > 0) {
+            const first = raw[0];
+            console.log("[PO] typeof raw.items / first item:", typeof first);
+            console.log("[PO] first item keys:", Object.keys((first as object) ?? {}).join(", "));
+            console.log(
+              "[PO] Field sizes:",
+              JSON.stringify(
+                Object.fromEntries(
+                  Object.entries((first as Record<string, unknown>) ?? {}).map(([k, v]) => [
+                    k,
+                    JSON.stringify(v).length,
+                  ])
+                )
+              )
+            );
+          }
+        }
+        // Sanitization may already be applied by client for purchase-orders; ensure we return minimal shape
         return {
           data: result.data.map((po) => sanitizePurchaseOrder(po)),
           meta: result.meta,
