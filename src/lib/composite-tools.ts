@@ -5,7 +5,9 @@
 
 import type { SpendeskClient } from "../spendesk-api/client.js";
 import { SpendeskPaths } from "../spendesk-api/endpoints.js";
+import { fetchAllPages } from "./fetch-all-pages.js";
 import { fetchAllPayables, type Payable } from "./fetch-all-payables.js";
+import { sanitizePurchaseOrder } from "./sanitize-purchase-order.js";
 
 /** Payable types that have employee = userId (cardholder). */
 const CARD_PAYABLE_TYPES = new Set([
@@ -767,5 +769,160 @@ export async function getCashPosition(
     dueNext30daysEUR,
     totalOutstandingEUR,
     topUrgentPayments,
+  };
+}
+
+/** Sanitized PO shape (from sanitizePurchaseOrder). */
+type SanitizedPO = Record<string, unknown> & {
+  id?: string;
+  number?: string;
+  status?: string;
+  state?: string;
+  supplier?: { id?: string; name?: string };
+  costCenter?: { id?: string; name?: string; expenseAccount?: string };
+  currency?: string;
+  totalAmount?: number;
+  amountInvoiced?: number;
+  remainingAmount?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+};
+
+async function fetchOpenPurchaseOrders(api: SpendeskClient): Promise<SanitizedPO[]> {
+  const [openResult, partiallyReceivedResult] = await Promise.all([
+    fetchAllPages(api, SpendeskPaths.getPurchaseOrders, { status: "open", state: "approved" }, {
+      listKey: "purchaseOrders",
+    }),
+    fetchAllPages(api, SpendeskPaths.getPurchaseOrders, { status: "partially_received", state: "approved" }, {
+      listKey: "purchaseOrders",
+    }),
+  ]);
+
+  const seenIds = new Set<string>();
+  const all: SanitizedPO[] = [];
+  for (const po of [...openResult.data, ...partiallyReceivedResult.data]) {
+    const sanitized = sanitizePurchaseOrder(po) as SanitizedPO;
+    const id = String(sanitized.id ?? "");
+    if (id && !seenIds.has(id)) {
+      seenIds.add(id);
+      all.push(sanitized);
+    }
+  }
+  return all;
+}
+
+function computeProratizedAccrual(
+  remainingAmount: number,
+  startDate: string | null | undefined,
+  endDate: string | null | undefined,
+  asOfDate: string
+): number {
+  if (remainingAmount <= 0) return 0;
+  if (!startDate || !endDate) return remainingAmount;
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  const asOf = new Date(asOfDate).getTime();
+  if (asOf < start) return 0;
+  if (asOf >= end) return remainingAmount;
+  const totalDays = (end - start) / (24 * 60 * 60 * 1000);
+  const elapsedDays = (asOf - start) / (24 * 60 * 60 * 1000);
+  if (totalDays <= 0) return remainingAmount;
+  const factor = Math.min(1, Math.max(0, elapsedDays / totalDays));
+  return round2(remainingAmount * factor);
+}
+
+export type GetAccrualsParams = {
+  asOfDate: string;
+  /** When true (default), accrual amount is prorated by the PO service period (startDate–endDate) relative to asOfDate. When false, book full remainingAmount. */
+  prorateByServicePeriod?: boolean;
+};
+
+export async function getAccruals(
+  api: SpendeskClient,
+  params: GetAccrualsParams
+): Promise<{
+  asOfDate: string;
+  prorateByServicePeriod: boolean;
+  totalAccrualEUR: number;
+  count: number;
+  accruals: Array<{
+    poId: string;
+    poNumber: string;
+    supplier: string;
+    costCenter: string | null;
+    currency: string;
+    poTotal: number;
+    invoiced: number;
+    remaining: number;
+    accrualAmount: number;
+    journalEntry: {
+      debit: string;
+      credit: string;
+      amount: number;
+      description: string;
+      reference: string;
+    };
+  }>;
+  journalLines: Array<{ account: string; side: "D" | "C"; amount: number }>;
+}> {
+  const asOfDate = params.asOfDate;
+  const prorateByServicePeriod = params.prorateByServicePeriod !== false;
+  const openPOs = await fetchOpenPurchaseOrders(api);
+  const withRemaining = openPOs.filter((po) => (Number(po.remainingAmount) ?? 0) > 0);
+
+  const accruals = withRemaining
+    .map((po) => {
+      const remaining = Number(po.remainingAmount) ?? 0;
+      const accrualAmount = prorateByServicePeriod
+        ? computeProratizedAccrual(
+            remaining,
+            po.startDate ?? undefined,
+            po.endDate ?? undefined,
+            asOfDate
+          )
+        : remaining;
+      const supplierName = (po.supplier as { name?: string })?.name ?? "Unknown";
+      const costCenterName = (po.costCenter as { name?: string })?.name ?? null;
+      const expenseAccountRaw = (po.costCenter as { expenseAccount?: string | { code?: string } })?.expenseAccount;
+      const expenseAccount =
+        typeof expenseAccountRaw === "string"
+          ? expenseAccountRaw
+          : (expenseAccountRaw as { code?: string })?.code ?? "621000";
+      const number = String(po.number ?? po.id ?? "");
+
+      return {
+        poId: String(po.id ?? ""),
+        poNumber: number,
+        supplier: supplierName,
+        costCenter: costCenterName,
+        currency: String(po.currency ?? "EUR"),
+        poTotal: round2(Number(po.totalAmount) ?? 0),
+        invoiced: round2(Number(po.amountInvoiced) ?? 0),
+        remaining: round2(remaining),
+        accrualAmount,
+        journalEntry: {
+          debit: expenseAccount,
+          credit: "408000",
+          amount: accrualAmount,
+          description: `Accrual ${supplierName} — ${number}`,
+          reference: number,
+        },
+      };
+    })
+    .sort((a, b) => b.accrualAmount - a.accrualAmount);
+
+  const totalAccrualEUR = round2(accruals.reduce((s, a) => s + a.accrualAmount, 0));
+  const journalLines = accruals.flatMap((a) => [
+    { account: a.journalEntry.debit, side: "D" as const, amount: a.accrualAmount },
+    { account: a.journalEntry.credit, side: "C" as const, amount: a.accrualAmount },
+  ]);
+
+  return {
+    asOfDate,
+    prorateByServicePeriod,
+    totalAccrualEUR,
+    count: accruals.length,
+    accruals,
+    journalLines,
   };
 }

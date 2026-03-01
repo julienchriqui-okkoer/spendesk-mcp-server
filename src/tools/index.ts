@@ -17,9 +17,11 @@ import {
   getApAging,
   getCashFlowForecast,
   getCashPosition,
+  getAccruals,
 } from "../lib/composite-tools.js";
 import { getApiReference } from "../lib/api-reference.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
+import { sanitizePurchaseOrder } from "../lib/sanitize-purchase-order.js";
 import { z } from "zod";
 
 const paginationSchema = {
@@ -501,9 +503,13 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           filters?: Record<string, unknown>;
         });
         const { page: _p3, perPage: _pp3, ...basePo } = poParams;
-        return fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
+        const result = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
           listKey: "purchaseOrders",
         });
+        return {
+          data: result.data.map((po) => sanitizePurchaseOrder(po)),
+          meta: result.meta,
+        };
       }
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
@@ -539,24 +545,13 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_get_purchase_orders_and_payables_export": {
         const from = String(args.from ?? "");
         const to = String(args.to ?? "");
-        const purchaseOrders: unknown[] = [];
-        for (let page = 1; page <= 50; page++) {
-          const params = buildPurchaseOrdersQueryParams({
-            from,
-            to,
-            page,
-            perPage: 100,
-          });
-          const res = await api.get<{ data?: unknown[]; purchaseOrders?: unknown[] }>(
-            SpendeskPaths.getPurchaseOrders,
-            params
-          );
-          const list = (res as Record<string, unknown>)?.data ?? (res as Record<string, unknown>)?.purchaseOrders ?? [];
-          const items = Array.isArray(list) ? list : [];
-          if (items.length === 0) break;
-          purchaseOrders.push(...items);
-          if (items.length < 100) break;
-        }
+        const basePo = buildPurchaseOrdersQueryParams({ from, to });
+        const { data: purchaseOrders } = await fetchAllPages(
+          api,
+          SpendeskPaths.getPurchaseOrders,
+          basePo,
+          { listKey: "purchaseOrders" }
+        );
         const { payables } = await fetchPayablesForPeriod(api, from, to);
         const bySupplierMap = new Map<
           string,
@@ -628,6 +623,11 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_get_cash_position":
         return getCashPosition(api, {
           asOfDate: args.asOfDate as string | undefined,
+        });
+      case "spendesk_get_accruals":
+        return getAccruals(api, {
+          asOfDate: String(args.asOfDate),
+          prorateByServicePeriod: args.prorateByServicePeriod as boolean | undefined,
         });
 
       case "spendesk_get_api_reference": {
@@ -837,6 +837,19 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       asOfDate: z.string().optional().describe("Reference date (default: today) YYYY-MM-DD"),
     },
     async (args) => toContent(await run("spendesk_get_cash_position", args))
+  );
+  mcp.tool(
+    "spendesk_get_accruals",
+    "Month/year-end close: accruals from open POs (status open or partially_received). Returns journal-entry-ready list (debit 621/expense account, credit 408000), totalAccrualEUR, and journalLines for export. Use for: year-end accruals, PO accrual report, journal entries for open POs. When prorateByServicePeriod is true (default), accrual amount is prorated by the PO service period (startDate–endDate) relative to asOfDate; when false, books full remaining amount.",
+    {
+      asOfDate: dateYMD.describe("Reference date for accrual (e.g. 2026-12-31) YYYY-MM-DD"),
+      prorateByServicePeriod: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe("When true (default), accrual is prorated by PO service period (startDate–endDate) vs asOfDate. When false, book full remaining amount."),
+    },
+    async (args) => toContent(await run("spendesk_get_accruals", args))
   );
 
   mcp.tool(
