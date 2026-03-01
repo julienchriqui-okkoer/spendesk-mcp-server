@@ -469,9 +469,11 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.delete(SpendeskPaths.deleteWebhook(args.webhookId as string));
 
       case "spendesk_get_purchase_orders": {
-        const page = Number(args.page) >= 1 ? String(args.page) : "1";
-        const perPage = Math.min(100, Math.max(1, Number(args.perPage ?? 20)));
-        return api.get(SpendeskPaths.getPurchaseOrders, { page, per_page: String(perPage) });
+        const perPage = Math.min(100, Math.max(1, Number(args.perPage ?? 100)));
+        return fetchAllPages(api, SpendeskPaths.getPurchaseOrders, {}, {
+          listKey: "purchaseOrders",
+          requestedPerPage: perPage,
+        });
       }
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
@@ -949,10 +951,9 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   // —— Purchase Orders ———————————————————————————————————————————————————————
   mcp.tool(
     "spendesk_get_purchase_orders",
-    "Get purchase orders from the API (one page, no filter). Returns the raw API response (e.g. purchaseOrders or data array + meta/pagination). Use page and perPage for pagination (default perPage: 20, max 100).",
+    "Get all purchase orders from the API in one call. Fetches all pages in parallel and returns { data: purchaseOrders[], meta: { pagination: { total, pageSize } } }. Each PO is sanitized (minimal fields, no large arrays). Optional perPage: page size used when fetching (default 100, max 100).",
     {
-      page: z.number().int().min(1).optional().describe("Page number (1-based). Default 1."),
-      perPage: z.number().int().min(1).max(100).optional().describe("Items per page. Default 20, max 100."),
+      perPage: z.number().int().min(1).max(100).optional().describe("Items per page when fetching (default 100). All pages are fetched automatically."),
     },
     async (args) => toContent(await run("spendesk_get_purchase_orders", args))
   );

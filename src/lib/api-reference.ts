@@ -367,10 +367,9 @@ export const API_REFERENCE = {
       method: "GET",
       path: "/v1/purchase-orders",
       mcpTool: "spendesk_get_purchase_orders",
-      description: "Get purchase orders (one page, no filter). Pagination: page (default 1), perPage (default 20, max 100).",
+      description: "Get all purchase orders in one call (all pages fetched in parallel). Returns { data, meta: { pagination: { total, pageSize } } }. Each PO is sanitized.",
       queryParams: [
-        { name: "page", type: "number", required: false, description: "Page (1-based)" },
-        { name: "perPage", type: "number", required: false, description: "Items per page (max 100)" },
+        { name: "perPage", type: "number", required: false, description: "Page size when fetching (default 100, max 100)" },
       ],
     },
     {
