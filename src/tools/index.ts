@@ -19,10 +19,13 @@ import {
   getCashPosition,
   getAccruals,
 } from "../lib/composite-tools.js";
+import alasql from "alasql";
 import { getApiReference } from "../lib/api-reference.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
-import { sanitizePurchaseOrder } from "../lib/sanitize-purchase-order.js";
 import { z } from "zod";
+
+/** Session store for load + query pattern (avoids MCP serializing raw API response). */
+const SESSION: { purchaseOrders?: Record<string, unknown>[] } = {};
 
 const paginationSchema = {
   page: z.number().int().min(1).optional().describe("Page number (1-based)"),
@@ -55,22 +58,6 @@ const settlementsSchema = {
   filters: filtersSchema, // Keep filters for any additional parameters
 };
 
-// Specific schema for purchase orders with dedicated parameters
-const purchaseOrdersSchema = {
-  ...paginationSchema,
-  status: z.string().optional().describe("Filter purchase orders by status"),
-  state: z.string().optional().describe("Filter purchase orders by state"),
-  supplierId: z.string().optional().describe("Filter purchase orders by supplier ID"),
-  userId: z.string().optional().describe("Filter purchase orders by user ID (requester)"),
-  from: z.string().optional().describe("Filter purchase orders created from this date (ISO 8601 format)"),
-  to: z.string().optional().describe("Filter purchase orders created until this date (ISO 8601 format)"),
-  createdFrom: z.string().optional().describe("Filter purchase orders created from this date (ISO 8601 format)"),
-  createdTo: z.string().optional().describe("Filter purchase orders created until this date (ISO 8601 format)"),
-  updatedFrom: z.string().optional().describe("Filter purchase orders updated from this date (ISO 8601 format)"),
-  updatedTo: z.string().optional().describe("Filter purchase orders updated until this date (ISO 8601 format)"),
-  ids: z.union([z.string(), z.array(z.string())]).optional().describe("Filter by purchase order ID(s). Can be a single ID string or array of IDs"),
-  filters: filtersSchema, // Keep filters for any additional parameters
-};
 
 const dateYMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
 
@@ -485,70 +472,93 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_delete_webhook":
         return api.delete(SpendeskPaths.deleteWebhook(args.webhookId as string));
 
-      case "spendesk_get_purchase_orders": {
-        const poParams = buildPurchaseOrdersQueryParams(args as {
-          page?: number;
-          perPage?: number;
-          status?: string;
-          state?: string;
-          supplierId?: string;
-          userId?: string;
-          from?: string;
-          to?: string;
-          createdFrom?: string;
-          createdTo?: string;
-          updatedFrom?: string;
-          updatedTo?: string;
-          ids?: string | string[];
-          filters?: Record<string, unknown>;
-        });
-        const { page: _p3, perPage: _pp3, ...basePo } = poParams;
-        let result = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, basePo, {
-          listKey: "purchaseOrders",
-        });
-        // Defensive: if framework passed pre-serialized string, parse before use
-        if (typeof result === "string") {
-          try {
-            result = JSON.parse(result) as typeof result;
-          } catch {
-            return { data: [], meta: { pagination: { total: 0, pageSize: 0 } } };
-          }
+      case "spendesk_load_purchase_orders": {
+        const status = args.status != null ? String(args.status) : undefined;
+        const supplierId = args.supplierId != null ? String(args.supplierId) : undefined;
+        const userId = args.userId != null ? String(args.userId) : undefined;
+        const allItems: Record<string, unknown>[] = [];
+        let page = 1;
+        const perPage = 100;
+        while (true) {
+          const params: Record<string, string> = { page: String(page), perPage: String(perPage) };
+          if (status) params.status = status;
+          if (supplierId) params.supplierId = supplierId;
+          if (userId) params.userId = userId;
+          const res = (await api.get<{ purchaseOrders?: unknown[]; data?: unknown[] }>(
+            SpendeskPaths.getPurchaseOrders,
+            params
+          )) as Record<string, unknown>;
+          const list = (res.purchaseOrders ?? res.data) as Record<string, unknown>[] | undefined;
+          const items = Array.isArray(list)
+            ? list.map((po: Record<string, unknown>) => {
+                const supplier = po.supplier as Record<string, unknown> | undefined;
+                const costCenter = po.costCenter as Record<string, unknown> | undefined;
+                const requester = po.requester as Record<string, unknown> | undefined;
+                const total = Number(po.totalAmount ?? po.total_amount ?? 0);
+                const invoiced = Number(po.amountInvoiced ?? po.amount_invoiced ?? 0);
+                return {
+                  id: po.id,
+                  number: po.number ?? po.po_number ?? (po.id ? String(po.id).substring(0, 8) : null),
+                  status: po.status,
+                  supplierName: supplier?.name ?? null,
+                  costCenterName: costCenter?.name ?? null,
+                  requesterName:
+                    requester != null
+                      ? `${String(requester.firstName ?? requester.first_name ?? "")} ${String(requester.lastName ?? requester.last_name ?? "")}`.trim() || null
+                      : null,
+                  currency: po.currency,
+                  totalAmount: total,
+                  amountInvoiced: invoiced,
+                  remainingAmount: total - invoiced,
+                  startDate: po.startDate ?? po.start_date ?? null,
+                  endDate: po.endDate ?? po.end_date ?? null,
+                  description: String(po.description ?? "").substring(0, 120),
+                };
+              })
+            : [];
+          allItems.push(...items);
+          if (items.length < perPage) break;
+          page++;
         }
-        if (typeof result.data === "string") {
-          try {
-            result = { ...result, data: JSON.parse(result.data) as unknown[] };
-          } catch {
-            result = { ...result, data: [] };
-          }
-        }
-        // Diagnostic: is raw already a string / what shape do we have? (set PO_DEBUG=1)
-        if (process.env.PO_DEBUG === "1") {
-          const raw = result.data;
-          console.log("[PO] typeof result:", typeof result);
-          console.log("[PO] typeof result.data:", typeof raw);
-          console.log("[PO] result keys:", Object.keys(result ?? {}).join(", "));
-          if (Array.isArray(raw) && raw.length > 0) {
-            const first = raw[0];
-            console.log("[PO] typeof raw.items / first item:", typeof first);
-            console.log("[PO] first item keys:", Object.keys((first as object) ?? {}).join(", "));
-            console.log(
-              "[PO] Field sizes:",
-              JSON.stringify(
-                Object.fromEntries(
-                  Object.entries((first as Record<string, unknown>) ?? {}).map(([k, v]) => [
-                    k,
-                    JSON.stringify(v).length,
-                  ])
-                )
-              )
-            );
-          }
-        }
-        // Sanitization may already be applied by client for purchase-orders; ensure we return minimal shape
+        SESSION.purchaseOrders = allItems;
+        const columns = [
+          "id",
+          "number",
+          "status",
+          "supplierName",
+          "costCenterName",
+          "requesterName",
+          "currency",
+          "totalAmount",
+          "amountInvoiced",
+          "remainingAmount",
+          "startDate",
+          "endDate",
+          "description",
+        ];
         return {
-          data: result.data.map((po) => sanitizePurchaseOrder(po)),
-          meta: result.meta,
+          loaded: allItems.length,
+          message: `${allItems.length} POs loaded. Now call spendesk_query_purchase_orders with a SQL WHERE/ORDER clause.`,
+          columns,
         };
+      }
+      case "spendesk_query_purchase_orders": {
+        if (!SESSION.purchaseOrders?.length) {
+          return { error: "No POs in memory. Call spendesk_load_purchase_orders first." };
+        }
+        const sql = String(args.sql ?? "").trim();
+        if (!sql) return { error: "sql is required." };
+        try {
+          const results = alasql(sql, [SESSION.purchaseOrders]) as Record<string, unknown>[];
+          return { rows: results, count: results.length };
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          return { error: `SQL error: ${message}` };
+        }
+      }
+      case "spendesk_clear_purchase_orders": {
+        delete SESSION.purchaseOrders;
+        return { cleared: true };
       }
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
@@ -1023,12 +1033,28 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     async (args) => toContent(await run("spendesk_delete_webhook", args))
   );
 
-  // —— Purchase Orders —————————————————————————————————————————————————──────
+  // —— Purchase Orders (load + query pattern to avoid MCP content size limit) ———
   mcp.tool(
-    "spendesk_get_purchase_orders",
-    "Get full purchase orders list (all pages). Uses API pageSize for pagination like composite tools. Params: status, state, supplierId, userId, ids, from, to, createdFrom, createdTo, updatedFrom, updatedTo, 'filters' (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }.",
-    purchaseOrdersSchema,
-    async (args) => toContent(await run("spendesk_get_purchase_orders", args))
+    "spendesk_load_purchase_orders",
+    "Load purchase orders into session memory for querying with spendesk_query_purchase_orders. Fetches all pages and sanitizes before any MCP serialization. Filters: status ('open'|'partially_received'|'closed'), supplierId, userId. Returns loaded count, message, and column list. Call spendesk_query_purchase_orders next with SQL (SELECT * FROM ? WHERE ... ORDER BY ...).",
+    {
+      status: z.string().optional().describe("Filter by status: open, partially_received, closed, cancelled"),
+      supplierId: z.string().optional().describe("Filter by supplier ID"),
+      userId: z.string().optional().describe("Filter by user/requester ID"),
+    },
+    async (args) => toContent(await run("spendesk_load_purchase_orders", args))
+  );
+  mcp.tool(
+    "spendesk_query_purchase_orders",
+    "Run a SQL query against purchase orders loaded with spendesk_load_purchase_orders. Use standard SQL with ? as the table (e.g. SELECT * FROM ? WHERE status='open' AND remainingAmount > 0 ORDER BY endDate ASC, or SELECT supplierName, SUM(remainingAmount) as total FROM ? GROUP BY supplierName ORDER BY total DESC LIMIT 10). Returns { rows, count }. Call spendesk_load_purchase_orders first if empty.",
+    { sql: z.string().describe("SQL query; use ? for the in-memory PO table") },
+    async (args) => toContent(await run("spendesk_query_purchase_orders", args))
+  );
+  mcp.tool(
+    "spendesk_clear_purchase_orders",
+    "Clear purchase orders from session memory.",
+    {},
+    async () => toContent(await run("spendesk_clear_purchase_orders", {}))
   );
   mcp.tool(
     "spendesk_create_purchase_order",

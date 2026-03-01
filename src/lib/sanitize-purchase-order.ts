@@ -1,6 +1,6 @@
 /**
  * Strip purchase order to minimal skeleton — ZERO arrays — to stay under MCP content size limit.
- * Use for spendesk_get_purchase_orders and for fetchOpenPurchaseOrders (accruals).
+ * Used by HTTP client (purchase-orders truncation) and fetchOpenPurchaseOrders (accruals).
  * Arrays (lineItems, payables, etc.) are replaced by counts only.
  */
 
