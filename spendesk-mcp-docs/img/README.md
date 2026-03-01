@@ -2,7 +2,7 @@
 
 Ajoutez ici les captures d’écran pour les guides **Utiliser le MCP avec Dust** et **Utiliser le MCP avec Claude**.
 
-## Dust
+## Dust (en place)
 
 | Fichier | Description |
 |---------|-------------|

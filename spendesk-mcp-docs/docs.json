@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "Spendesk MCP",
   "colors": {
-    "primary": "#1D4ED8",
-    "light": "#1D4ED8",
-    "dark": "#3B82F6"
+    "primary": "#5D21D2",
+    "light": "#5D21D2",
+    "dark": "#7B4AE8"
   },
   "favicon": "/favicon.svg",
   "navigation": {
