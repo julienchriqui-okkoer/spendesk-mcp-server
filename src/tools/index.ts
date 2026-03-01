@@ -508,14 +508,17 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         });
         // Debug: log raw PO size per field (set PO_DEBUG=1 to enable)
         if (process.env.PO_DEBUG === "1" && result.data.length > 0) {
-          const raw = result.data;
-          const first = raw[0] as Record<string, unknown>;
-          const rawSize = JSON.stringify(first).length;
-          console.log(`[PO Debug] Raw size for 1 PO: ${rawSize} bytes`);
-          console.log("[PO Debug] Keys and sizes:");
-          Object.entries(first ?? {}).forEach(([key, value]) => {
-            console.log(`  ${key}: ${JSON.stringify(value).length} bytes`);
-          });
+          const poRaw = result.data[0] as Record<string, unknown>;
+          console.log("[PO Debug] PO raw size:", JSON.stringify(poRaw).length);
+          console.log("[PO Debug] PO keys:", Object.keys(poRaw ?? {}).join(", "));
+          console.log(
+            "[PO Debug] Field sizes:",
+            JSON.stringify(
+              Object.fromEntries(
+                Object.entries(poRaw ?? {}).map(([k, v]) => [k, JSON.stringify(v).length])
+              )
+            )
+          );
         }
         return {
           data: result.data.map((po) => sanitizePurchaseOrder(po)),

@@ -772,14 +772,16 @@ export async function getCashPosition(
   };
 }
 
-/** Sanitized PO shape (from sanitizePurchaseOrder). */
+/** Sanitized PO shape (from sanitizePurchaseOrder — flat, no arrays). */
 type SanitizedPO = Record<string, unknown> & {
   id?: string;
   number?: string;
   status?: string;
   state?: string;
+  supplierName?: string;
+  costCenterName?: string | null;
   supplier?: { id?: string; name?: string };
-  costCenter?: { id?: string; name?: string; expenseAccount?: string };
+  costCenter?: { id?: string; name?: string };
   currency?: string;
   totalAmount?: number;
   amountInvoiced?: number;
@@ -881,13 +883,9 @@ export async function getAccruals(
             asOfDate
           )
         : remaining;
-      const supplierName = (po.supplier as { name?: string })?.name ?? "Unknown";
-      const costCenterName = (po.costCenter as { name?: string })?.name ?? null;
-      const expenseAccountRaw = (po.costCenter as { expenseAccount?: string | { code?: string } })?.expenseAccount;
-      const expenseAccount =
-        typeof expenseAccountRaw === "string"
-          ? expenseAccountRaw
-          : (expenseAccountRaw as { code?: string })?.code ?? "621000";
+      const supplierName = (po.supplierName as string) ?? (po.supplier as { name?: string })?.name ?? "Unknown";
+      const costCenterName = (po.costCenterName as string) ?? (po.costCenter as { name?: string })?.name ?? null;
+      const expenseAccount = "621000";
       const number = String(po.number ?? po.id ?? "");
 
       return {
