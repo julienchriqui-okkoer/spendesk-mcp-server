@@ -17,7 +17,6 @@ import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient, type ClientCredentials } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
-import { getRegisterForm, registerClient, getSuccessPage, getCompaniesPage, addCompany, getDocsPage } from "./routes/ui.js";
 
 function getApiToken(): string | null {
   return process.env.SPENDESK_API_TOKEN || null;
@@ -171,95 +170,40 @@ app.get("/health", (req: Request, res: Response) => {
   }
 });
 
-// JSON body parser for UI routes
-// Note: createMcpExpressApp might already parse JSON, so we check if body exists first
-app.use((req: Request, res: Response, next: NextFunction) => {
-  // Skip if body already parsed or not a POST to /ui
-  if (!req.path.startsWith("/ui") || req.method !== "POST") {
-    return next();
-  }
-  
-  // If body is already parsed (by createMcpExpressApp), use it
-  if (req.body && typeof req.body === "object" && Object.keys(req.body).length > 0) {
-    console.log("[BodyParser] Body already parsed:", Object.keys(req.body));
-    return next();
-  }
-  
-  // Otherwise, parse manually
-  if (req.get("content-type")?.includes("application/json")) {
-    console.log("[BodyParser] Parsing body manually for", req.path);
-    const chunks: Buffer[] = [];
-    let bodyRead = false;
-    
-    req.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-    
-    req.on("end", () => {
-      if (bodyRead) return;
-      bodyRead = true;
-      try {
-        const data = Buffer.concat(chunks).toString("utf8");
-        req.body = data ? JSON.parse(data) : {};
-        console.log("[BodyParser] Manually parsed body:", Object.keys(req.body || {}));
-        next();
-      } catch (err) {
-        console.error("[BodyParser] Parse error:", err);
-        req.body = {};
-        next();
-      }
-    });
-    
-    req.on("error", (err) => {
-      if (bodyRead) return;
-      bodyRead = true;
-      console.error("[BodyParser] Stream error:", err);
-      req.body = {};
-      next();
-    });
-    
-    // If stream is already ended (body already consumed), parse empty body
-    if (req.readableEnded) {
-      req.body = {};
-      next();
-    }
-  } else {
-    next();
-  }
-});
-
 app.get("/", (_req: Request, res: Response) => {
   res.status(200).type("application/json").send(
     JSON.stringify({
       name: "spendesk-mcp-server",
       status: "ok",
       mcp: "/mcp",
-      ui: "/ui",
+      doc: "/doc",
       endpoints: {
         post: "POST /mcp (JSON-RPC)",
         get: "GET /mcp (SSE, send mcp-session-id)",
         delete: "DELETE /mcp (close session)",
-        ui: "GET /ui (Client registration portal)",
+        doc: "GET /doc (redirect to documentation)",
       },
     })
   );
 });
 
-
-// UI Routes - Register BEFORE MCP routes to ensure they're not intercepted
-app.get("/ui", getRegisterForm);
-app.get("/ui/docs", getDocsPage);
-app.post("/ui/register", async (req: Request, res: Response) => {
-  console.log("[UI Register] Route handler called");
-  console.log("[UI Register] Method:", req.method);
-  console.log("[UI Register] Path:", req.path);
-  console.log("[UI Register] Body:", req.body);
-  await registerClient(req, res);
-});
-app.get("/ui/success", getSuccessPage);
-app.get("/ui/companies", getCompaniesPage);
-app.post("/ui/companies", async (req: Request, res: Response) => {
-  await addCompany(req, res);
+// GET /doc — redirect to Mintlify documentation (DOCS_URL) or show link
+const DOCS_URL = process.env.DOCS_URL?.trim() || "";
+app.get("/doc", (_req: Request, res: Response) => {
+  if (DOCS_URL) {
+    res.redirect(302, DOCS_URL);
+    return;
+  }
+  res.status(200).type("text/html").send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Documentation - Spendesk MCP</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 40px auto; padding: 24px;">
+  <h1>Documentation</h1>
+  <p>Pour afficher la documentation MCP (Mintlify), définissez la variable d'environnement <code>DOCS_URL</code> avec l'URL de votre doc (ex. https://votre-doc.mintlify.app).</p>
+  <p>Une fois configurée, <code>GET /doc</code> redirigera automatiquement vers cette URL.</p>
+</body>
+</html>`);
 });
 
 // Apply authentication middleware to MCP routes
@@ -326,7 +270,7 @@ app.get("/mcp", async (req: Request, res: Response) => {
   <h1>Endpoint MCP</h1>
   <p>Cette URL est le point d’entrée du <strong>Model Context Protocol</strong>. Elle ne s’ouvre pas directement dans le navigateur.</p>
   <p>Pour l’utiliser : configurez un client MCP (Dust, Cursor, script) avec cette URL, puis envoyez d’abord une requête <code>POST /mcp</code> avec la méthode <code>initialize</code> pour obtenir un identifiant de session.</p>
-  <p><a href="/ui/docs">Voir la documentation</a> pour la configuration pas à pas.</p>
+  <p><a href="/doc">Voir la documentation</a> pour la configuration pas à pas.</p>
 </body>
 </html>`);
     } else {
@@ -363,7 +307,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log("  POST /mcp — JSON-RPC (init and messages)");
   console.log("  GET  /mcp — SSE stream (send mcp-session-id header)");
   console.log("  DELETE /mcp — close session (send mcp-session-id header)");
-  console.log("  GET  /ui — Client registration portal");
+  console.log("  GET  /doc — Documentation (redirect if DOCS_URL set)");
   
   // Log environment status
   if (process.env.ENCRYPTION_KEY) {
@@ -375,7 +319,7 @@ const server = app.listen(PORT, HOST, () => {
   if (process.env.SPENDESK_API_TOKEN) {
     console.log("✓ SPENDESK_API_TOKEN configured (fallback mode)");
   } else {
-    console.warn("⚠ SPENDESK_API_TOKEN not set - clients must register via /ui");
+    console.warn("⚠ SPENDESK_API_TOKEN not set - clients must provide credentials (Bearer or X-Client-Token)");
   }
   
 });

@@ -27,6 +27,7 @@ Variables d'environnement :
 | `SPENDESK_API_TOKEN` | Optionnel | Token Bearer (OAuth2 ou identifiants API) en mode fallback. **Ne pas commiter.** Si non défini, les clients doivent s'enregistrer via `/ui`. |
 | `SPENDESK_USE_DEMO` | Non | `true` ou `1` pour utiliser l'API démo (`https://public-api.demo.spendesk.com`). |
 | `DB_PATH` | Non | Chemin de la base SQLite (défaut : `./data/clients.db`). |
+| `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
 
 Exemple avec un fichier `.env` (à ne pas commiter) :
 
@@ -171,17 +172,15 @@ Endpoints :
 - **POST /mcp** — JSON-RPC (initialisation + messages). Le serveur renvoie un en-tête `mcp-session-id` à la première requête d'initialisation.
 - **GET /mcp** — Flux SSE (envoyer l'en-tête `mcp-session-id`).
 - **DELETE /mcp** — Fermer la session (en-tête `mcp-session-id`).
-- **GET /ui** — Portail d'enregistrement client (voir section Multi-tenant ci-dessous).
-- **POST /ui/register** — Enregistrer un nouveau client avec son token Spendesk (optionnel : nom de la première company).
-- **GET /ui/success** — Page de confirmation après enregistrement (affiche la clé API et la liste des companies).
-- **GET /ui/companies** — Gérer ses companies (liste + formulaire pour en ajouter). Requiert `?apiKey=...`.
-- **POST /ui/companies** — Ajouter une company (body JSON : `apiKey`, `label`, `token`).
+- **GET /doc** — Redirection vers la documentation (Mintlify). Définir `DOCS_URL` pour l’URL cible ; sinon une page d’information s’affiche.
 
 ### Portail Multi-tenant
 
-Le serveur supporte un mode **multi-tenant** où chaque client peut enregistrer son propre token Spendesk via un portail web, sans que vous ayez à stocker de tokens en dur dans les variables Railway.
+L’interface d’enregistrement (`/ui`) n’est pas exposée pour le moment. L’authentification se fait via les identifiants fournis par le client (Bearer, headers) ou le fallback des variables d’environnement (voir Credentials fournis par le client et Mode Fallback ci-dessous).
 
-#### Configuration
+Le serveur supporte un mode **multi-tenant** (base SQLite + clés API) pour les déploiements qui l’utilisent déjà. La documentation utilisateur est accessible via **GET /doc** (définir `DOCS_URL` pour rediriger vers la doc Mintlify).
+
+#### Configuration (si multi-tenant utilisé en interne)
 
 1. **Générer une clé de chiffrement** :
    ```bash
@@ -197,15 +196,9 @@ Le serveur supporte un mode **multi-tenant** où chaque client peut enregistrer 
    npm run start:http
    ```
 
-#### Enregistrement d'un client
+#### Enregistrement d'un client (hors interface)
 
-1. **Accéder au portail** : Ouvrez `http://localhost:3000/ui` (ou votre URL déployée + `/ui`).
-
-2. **Entrer le token Spendesk** : Le client entre son token Bearer Spendesk dans le formulaire. Il peut optionnellement donner un **nom de company** (ex. « Spendesk FR ») pour la première company.
-
-3. **Validation** : Le serveur valide le token en appelant l'API Spendesk, puis génère une **clé API unique** (UUID) et enregistre la première company si un nom a été fourni.
-
-4. **Récupérer la clé API** : La clé API est affichée sur la page de succès. Le client doit la conserver en sécurité. La page affiche aussi la liste des **company_key** à utiliser avec le header `X-Company-Id` (voir Multi-company ci-dessous).
+L’interface web d’enregistrement n’est pas exposée. Les clients s’authentifient en fournissant un Bearer token (token Spendesk ou clé API existante) ou via les headers (voir section Credentials fournis par le client).
 
 #### Utilisation de la clé API
 
@@ -222,7 +215,7 @@ curl -H "X-Client-Token: <clé-api>" \
 
 Un même client peut avoir **plusieurs companies** (chacune avec son propre token Spendesk), par exemple Spendesk FR et Spendesk UK. Cela permet de construire un **dashboard consolidé** (ex. avec Dust) en interrogeant chaque company puis en agrégeant les données.
 
-1. **Enregistrement** : Lors de l'inscription, donnez un nom à la première company (ex. « Spendesk FR »). Puis, depuis la page de succès, cliquez sur **Gérer mes companies** (`/ui/companies?apiKey=<votre-clé>`) pour ajouter d'autres companies (ex. « Spendesk UK ») avec leur token respectif.
+1. **Enregistrement** : Les companies et clés API sont gérées en interne (base SQLite). Pour ajouter des companies, utiliser les mêmes mécanismes d’auth (Bearer, credentials) que pour une seule company.
 
 2. **Headers MCP** :
    - **`X-Client-Token`** : votre clé API (obligatoire pour identifier le compte).
