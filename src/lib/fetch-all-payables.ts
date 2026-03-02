@@ -69,6 +69,12 @@ export interface DateRange {
   to: string;
 }
 
+/** Cap end date to today (YYYY-MM-DD). Avoids 409 when user requests a period ending in the future. */
+export function safeEndDate(to: string): string {
+  const today = new Date().toISOString().split("T")[0];
+  return to > today ? today : to;
+}
+
 export function splitDateRange(from: string, to: string, maxDays: number): DateRange[] {
   const ranges: DateRange[] = [];
   const end = new Date(to);
@@ -115,6 +121,26 @@ async function createSnapshot(api: SpendeskClient, from: string, to: string): Pr
     (res as SnapshotCreateResponse).data?.id;
   if (!id) throw new Error("Snapshot creation did not return an id/key");
   return String(id);
+}
+
+/** Create snapshot; on 409 (future date or duplicate/processing), retry once: with to capped to today, or after delay if already capped. */
+async function createSnapshotWithRetry(api: SpendeskClient, from: string, to: string): Promise<string> {
+  try {
+    return await createSnapshot(api, from, to);
+  } catch (err) {
+    if (err instanceof SpendeskApiError && err.statusCode === 409) {
+      const fallback = safeEndDate(to);
+      if (fallback !== to) {
+        console.warn(`[fetchAllPayables] 409 on snapshot [${from} → ${to}], retrying with to=${fallback}`);
+        return await createSnapshot(api, from, fallback);
+      }
+      // Same params (e.g. duplicate or still processing): retry once after short delay
+      console.warn(`[fetchAllPayables] 409 on snapshot [${from} → ${to}], retrying after 3s`);
+      await new Promise((r) => setTimeout(r, 3000));
+      return await createSnapshot(api, from, to);
+    }
+    throw err;
+  }
 }
 
 async function pollUntilReady(
@@ -283,19 +309,20 @@ export async function fetchAllPayables(
   from: string,
   to: string
 ): Promise<Payable[]> {
+  const safeTo = safeEndDate(to);
   const fromDate = new Date(from);
-  const toDate = new Date(to);
+  const toDate = new Date(safeTo);
   const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
   if (daysDiff > 90) {
     console.warn("Large date range may be slow. Consider narrowing to a quarter.");
   }
-  const ranges = splitDateRange(from, to, 31);
+  const ranges = splitDateRange(from, safeTo, 31);
   let snapshotIds: string[];
   try {
     snapshotIds = [];
     for (let i = 0; i < ranges.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, SNAPSHOT_CREATE_DELAY_MS));
-      const id = await createSnapshot(api, ranges[i].from, ranges[i].to);
+      const id = await createSnapshotWithRetry(api, ranges[i].from, ranges[i].to);
       snapshotIds.push(id);
     }
   } catch (err) {
