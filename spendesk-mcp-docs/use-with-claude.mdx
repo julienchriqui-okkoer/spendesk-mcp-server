@@ -30,7 +30,7 @@ This guide explains how to configure the Spendesk MCP server with **Claude** (Cl
 1. Create or edit an MCP server entry (e.g. name "spendesk").
 2. Set the server **URL** to:
 
-`https://spendesk-mcp-server-production.up.railway.app/mcp`
+`https://spendesk-mcp.up.railway.app/mcp`
 
 3. Do not add a trailing slash.
 
@@ -59,7 +59,7 @@ Claude sends HTTP headers to the MCP server. You must send a **Bearer token**.
 {
   "mcpServers": {
     "spendesk": {
-      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
+      "url": "https://spendesk-mcp.up.railway.app/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_TOKEN_HERE"
       }

@@ -30,7 +30,7 @@ Ce guide décrit la configuration du serveur Spendesk MCP avec **Claude** (Claud
 1. Créez ou éditez une entrée de serveur MCP (ex. nom « spendesk »).
 2. Renseignez l'**URL** du serveur :
 
-`https://spendesk-mcp-server-production.up.railway.app/mcp`
+`https://spendesk-mcp.up.railway.app/mcp`
 
 3. Ne pas ajouter de slash à la fin.
 
@@ -59,7 +59,7 @@ Claude envoie les en-têtes HTTP au serveur MCP. Il faut envoyer un **Bearer tok
 {
   "mcpServers": {
     "spendesk": {
-      "url": "https://spendesk-mcp-server-production.up.railway.app/mcp",
+      "url": "https://spendesk-mcp.up.railway.app/mcp",
       "headers": {
         "Authorization": "Bearer VOTRE_TOKEN_ICI"
       }
