@@ -2,7 +2,10 @@
  * Structured API reference for the Spendesk Public API as exposed by this MCP.
  * Exposed via resource spendesk://api-reference and tool spendesk_get_api_reference
  * so clients (Claude, Dust, etc.) can query endpoints, parameters, and data structures.
+ * Endpoints for disabled tools (config/tools.config.json) are excluded from the reference.
  */
+
+import { isToolEnabled } from "./tools-config.js";
 
 export type ParamSpec = {
   name: string;
@@ -398,14 +401,18 @@ export const API_REFERENCE = {
 };
 
 export function getApiReference(options?: { mcpTool?: string; path?: string }): typeof API_REFERENCE {
-  if (!options?.mcpTool && !options?.path) return API_REFERENCE;
-  const ref = {
-    ...API_REFERENCE,
-    endpoints: API_REFERENCE.endpoints.filter((e) => {
+  let endpoints = API_REFERENCE.endpoints.filter(
+    (e) => !e.mcpTool || isToolEnabled(e.mcpTool)
+  );
+  if (options?.mcpTool || options?.path) {
+    endpoints = endpoints.filter((e) => {
       if (options.mcpTool && e.mcpTool === options.mcpTool) return true;
       if (options.path && e.path.includes(options.path)) return true;
       return false;
-    }),
+    });
+  }
+  return {
+    ...API_REFERENCE,
+    endpoints,
   };
-  return ref;
 }

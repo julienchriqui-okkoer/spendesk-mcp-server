@@ -1,0 +1,15 @@
+{
+  "disabledTools": [
+    "spendesk_create_cost_center",
+    "spendesk_update_cost_center",
+    "spendesk_delete_cost_center",
+    "spendesk_create_accounting_export",
+    "spendesk_create_webhook",
+    "spendesk_update_webhook",
+    "spendesk_delete_webhook",
+    "spendesk_create_purchase_order",
+    "spendesk_get_purchase_orders",
+    "spendesk_get_purchase_orders_and_payables_export",
+    "spendesk_get_accruals"
+  ]
+}

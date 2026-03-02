@@ -21,6 +21,7 @@ import {
 } from "../lib/composite-tools.js";
 import { getApiReference } from "../lib/api-reference.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
+import { isToolEnabled } from "../lib/tools-config.js";
 import { z } from "zod";
 
 const paginationSchema = {
@@ -609,33 +610,46 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     content: [{ type: "text" as const, text: typeof result === "string" ? result : JSON.stringify(result, null, 2) }],
   });
 
+  /** Register tool only if enabled in config/tools.config.json (disabled tools are hidden from API reference). */
+  const maybeReg = (name: string, fn: () => void) => {
+    if (isToolEnabled(name)) fn();
+  };
+
   // —— Spend Data ———————————————————————————————————————————————————————————
-  mcp.tool(
-    "spendesk_get_settlements",
-    "Get full settlements list (all pages). Uses API pageSize for pagination like composite tools. Params: type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids, and 'filters' (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For financial analysis prefer spendesk_analyze_spend.",
-    settlementsSchema,
-    async (args) => toContent(await run("spendesk_get_settlements", args))
+  maybeReg("spendesk_get_settlements", () =>
+    mcp.tool(
+      "spendesk_get_settlements",
+      "Get full settlements list (all pages). Uses API pageSize for pagination like composite tools. Params: type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids, and 'filters' (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For financial analysis prefer spendesk_analyze_spend.",
+      settlementsSchema,
+      async (args) => toContent(await run("spendesk_get_settlements", args))
+    )
   );
-  mcp.tool(
-    "spendesk_update_settlement_state",
-    "Update a settlement state (e.g. for workflow automation).",
-    {
-      settlementId: z.string().describe("Settlement ID"),
-      state: z.string().describe("New state value"),
-    },
-    async (args) => toContent(await run("spendesk_update_settlement_state", args))
+  maybeReg("spendesk_update_settlement_state", () =>
+    mcp.tool(
+      "spendesk_update_settlement_state",
+      "Update a settlement state (e.g. for workflow automation).",
+      {
+        settlementId: z.string().describe("Settlement ID"),
+        state: z.string().describe("New state value"),
+      },
+      async (args) => toContent(await run("spendesk_update_settlement_state", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_bank_fees",
-    "Get bank fees. Useful for accounting and dashboards. Use 'filters' to pass any API query parameters.",
-    listSchema,
-    async (args) => toContent(await run("spendesk_get_bank_fees", args))
+  maybeReg("spendesk_get_bank_fees", () =>
+    mcp.tool(
+      "spendesk_get_bank_fees",
+      "Get bank fees. Useful for accounting and dashboards. Use 'filters' to pass any API query parameters.",
+      listSchema,
+      async (args) => toContent(await run("spendesk_get_bank_fees", args))
+    )
   );
-  mcp.tool(
-    "spendesk_create_payables_snapshot",
-    "Create a snapshot of payables (invoices, credit notes, etc.). Uses Public API filters: bookkeepingStatus, exportedAfter, ids, sortBy, sortOrder, fromPayableDate (requires toPayableDate, max 31 days), toPayableDate, createdFrom, createdTo, updatedFrom. Use 'filters' for any extra query params.",
-    payablesSnapshotSchema,
-    async (args) => toContent(await run("spendesk_create_payables_snapshot", args))
+  maybeReg("spendesk_create_payables_snapshot", () =>
+    mcp.tool(
+      "spendesk_create_payables_snapshot",
+      "Create a snapshot of payables (invoices, credit notes, etc.). Uses Public API filters: bookkeepingStatus, exportedAfter, ids, sortBy, sortOrder, fromPayableDate (requires toPayableDate, max 31 days), toPayableDate, createdFrom, createdTo, updatedFrom. Use 'filters' for any extra query params.",
+      payablesSnapshotSchema,
+      async (args) => toContent(await run("spendesk_create_payables_snapshot", args))
+    )
   );
   const getPayablesSnapshotSchema = {
     snapshotId: z.string().describe("Snapshot ID (or key returned by create snapshot)."),
@@ -643,37 +657,46 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     perPage: z.number().int().min(1).max(100).optional().default(30).describe("Items per page (max 100)."),
     filters: filtersSchema,
   };
-  mcp.tool(
-    "spendesk_get_payables_snapshot",
-    "Get a payables snapshot by ID. Supports pagination: page (default 1), perPage (default 30, max 100). Use filters for any extra query params (camelCase). Note: for financial analysis prefer spendesk_analyze_spend, spendesk_get_bookkeeping_pipeline, or other composite tools.",
-    getPayablesSnapshotSchema,
-    async (args) => toContent(await run("spendesk_get_payables_snapshot", args))
+  maybeReg("spendesk_get_payables_snapshot", () =>
+    mcp.tool(
+      "spendesk_get_payables_snapshot",
+      "Get a payables snapshot by ID. Supports pagination: page (default 1), perPage (default 30, max 100). Use filters for any extra query params (camelCase). Note: for financial analysis prefer spendesk_analyze_spend, spendesk_get_bookkeeping_pipeline, or other composite tools.",
+      getPayablesSnapshotSchema,
+      async (args) => toContent(await run("spendesk_get_payables_snapshot", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_payable",
-    "Get a single payable by ID (invoice, expense, etc.).",
-    { payableId: z.string().describe("Payable ID") },
-    async (args) => toContent(await run("spendesk_get_payable", args))
+  maybeReg("spendesk_get_payable", () =>
+    mcp.tool(
+      "spendesk_get_payable",
+      "Get a single payable by ID (invoice, expense, etc.).",
+      { payableId: z.string().describe("Payable ID") },
+      async (args) => toContent(await run("spendesk_get_payable", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_payable_attachments",
-    "Get attachments for a payable.",
-    { payableId: z.string().describe("Payable ID") },
-    async (args) => toContent(await run("spendesk_get_payable_attachments", args))
+  maybeReg("spendesk_get_payable_attachments", () =>
+    mcp.tool(
+      "spendesk_get_payable_attachments",
+      "Get attachments for a payable.",
+      { payableId: z.string().describe("Payable ID") },
+      async (args) => toContent(await run("spendesk_get_payable_attachments", args))
+    )
   );
-  mcp.tool(
-    "spendesk_update_payable_bookkeeping",
+  maybeReg("spendesk_update_payable_bookkeeping", () =>
+    mcp.tool(
+      "spendesk_update_payable_bookkeeping",
     "Update bookkeeping status of a payable (ERP sync).",
     {
       payableId: z.string().describe("Payable ID"),
       payload: z.record(z.unknown()).describe("Bookkeeping status payload"),
     },
-    async (args) => toContent(await run("spendesk_update_payable_bookkeeping", args))
+      async (args) => toContent(await run("spendesk_update_payable_bookkeeping", args))
+    )
   );
 
   // —— Report (key answers) ———————————————————————————————————————————————————
-  mcp.tool(
-    "spendesk_get_spend_dashboard",
+  maybeReg("spendesk_get_spend_dashboard", () =>
+    mcp.tool(
+      "spendesk_get_spend_dashboard",
     "Use when the user asks for a spend dashboard, spend breakdown by cost center / expense category / charge account for a given period (e.g. Q1 2026, January 2026). Returns aggregated data ready to display as tables.",
     {
       from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
@@ -683,26 +706,31 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         .optional()
         .describe("Optional: return only this aggregation"),
     },
-    async (args) => toContent(await run("spendesk_get_spend_dashboard", args))
+      async (args) => toContent(await run("spendesk_get_spend_dashboard", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_top_suppliers_by_spend",
+  maybeReg("spendesk_get_top_suppliers_by_spend", () =>
+    mcp.tool(
+      "spendesk_get_top_suppliers_by_spend",
     "Use when the user asks for top N suppliers by spend for a period, with associated payables or settlements. Returns ranked list with details.",
     {
       from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
       to: z.string().describe("End date ISO (e.g. 2026-03-31)"),
       limit: z.number().min(1).max(100).optional().describe("Number of top suppliers (default 10)"),
     },
-    async (args) => toContent(await run("spendesk_get_top_suppliers_by_spend", args))
+      async (args) => toContent(await run("spendesk_get_top_suppliers_by_spend", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_purchase_orders_and_payables_export",
+  maybeReg("spendesk_get_purchase_orders_and_payables_export", () =>
+    mcp.tool(
+      "spendesk_get_purchase_orders_and_payables_export",
     "Use when the user asks for an export of all purchase orders created in a period with their associated payables. Returns POs and payables linked by supplier.",
     {
       from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
       to: z.string().describe("End date ISO (e.g. 2026-03-31)"),
     },
-    async (args) => toContent(await run("spendesk_get_purchase_orders_and_payables_export", args))
+      async (args) => toContent(await run("spendesk_get_purchase_orders_and_payables_export", args))
+    )
   );
 
   // —— Composite tools (financial analysis) —————————————————————————————————
@@ -723,9 +751,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       analyticalFieldValue: z.string().optional(),
     })
     .optional();
-  mcp.tool(
-    "spendesk_analyze_spend",
-    "Analyze and aggregate spending from Spendesk payables over a time period. Supports filtering via filters: costCenter, supplier, supplierId, payableType, counterpartyType (supplier|employee), bookkeepingStatus, currency, minAmount, maxAmount, expenseAccount, analyticalFieldName+analyticalFieldValue. groupBy: supplier | costCenter | analyticalField | payableType | expenseAccount | employee | currency | bookkeepingStatus | month | paymentStatus | country. Examples: top suppliers for Strat Ops → groupBy: supplier, filters: { costCenter: \"Strat Ops\" }; cost centers using AWS → groupBy: costCenter, filters: { supplier: \"AWS\" }; top employees by expenses → groupBy: employee; spend by month → groupBy: month; USD spend → groupBy: currency, filters: { currency: \"USD\" }; not yet in accounting → filters: { bookkeepingStatus: \"created\" }. Use includeDetails: true for up to 10 payables per group.",
+  maybeReg("spendesk_analyze_spend", () =>
+    mcp.tool(
+      "spendesk_analyze_spend",
+      "Analyze and aggregate spending from Spendesk payables over a time period. Supports filtering via filters: costCenter, supplier, supplierId, payableType, counterpartyType (supplier|employee), bookkeepingStatus, currency, minAmount, maxAmount, expenseAccount, analyticalFieldName+analyticalFieldValue. groupBy: supplier | costCenter | analyticalField | payableType | expenseAccount | employee | currency | bookkeepingStatus | month | paymentStatus | country. Examples: top suppliers for Strat Ops → groupBy: supplier, filters: { costCenter: \"Strat Ops\" }; cost centers using AWS → groupBy: costCenter, filters: { supplier: \"AWS\" }; top employees by expenses → groupBy: employee; spend by month → groupBy: month; USD spend → groupBy: currency, filters: { currency: \"USD\" }; not yet in accounting → filters: { bookkeepingStatus: \"created\" }. Use includeDetails: true for up to 10 payables per group.",
     {
       from: z.string().describe("Start date ISO 8601 e.g. 2026-01-01"),
       to: z.string().describe("End date ISO 8601 e.g. 2026-03-31"),
@@ -750,10 +779,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       filters: analyzeSpendFiltersSchema.describe("Optional filters applied before aggregation (AND logic)"),
       includeDetails: z.boolean().optional().default(false).describe("Include up to 10 payables per group in results"),
     },
-    async (args) => toContent(await run("spendesk_analyze_spend", args))
+      async (args) => toContent(await run("spendesk_analyze_spend", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_bookkeeping_pipeline",
+  maybeReg("spendesk_get_bookkeeping_pipeline", () =>
+    mcp.tool(
+      "spendesk_get_bookkeeping_pipeline",
     "Use this to track the accounting/bookkeeping pipeline in Spendesk. Returns payables filtered by bookkeeping status. Use for: which invoices are not yet exported to accounting?, show me the VAT breakdown by rate, generate a journal entry list, what is pending for month-end close?",
     {
       from: z.string().describe("Start date ISO 8601"),
@@ -762,10 +793,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       includeVatBreakdown: z.boolean().optional().default(false),
       includeJournalEntries: z.boolean().optional().default(false),
     },
-    async (args) => toContent(await run("spendesk_get_bookkeeping_pipeline", args))
+      async (args) => toContent(await run("spendesk_get_bookkeeping_pipeline", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_payment_status",
+  maybeReg("spendesk_get_payment_status", () =>
+    mcp.tool(
+      "spendesk_get_payment_status",
     "Use this to check the payment status of invoices (paid, unpaid, partially paid). Also returns multi-currency exposure. Use for: which invoices are still unpaid?, show me partially paid invoices, what is our USD/GBP exposure this month?, reconcile payments with invoices.",
     {
       from: z.string().describe("Start date ISO 8601"),
@@ -773,37 +806,45 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       status: z.enum(["paid", "unpaid", "partial"]).optional().describe("Filter by status"),
       currency: z.string().optional().describe("Filter by original currency e.g. USD, GBP"),
     },
-    async (args) => toContent(await run("spendesk_get_payment_status", args))
+      async (args) => toContent(await run("spendesk_get_payment_status", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_ap_aging",
+  maybeReg("spendesk_get_ap_aging", () =>
+    mcp.tool(
+      "spendesk_get_ap_aging",
     "Use this for AP aging analysis — shows overdue and upcoming invoice payments. Use for: show me overdue invoices, AP aging report, which suppliers are we most overdue with?, what invoices are 30/60/90 days overdue?, calculate our DPO.",
     {
       asOfDate: z.string().optional().describe("Reference date for aging (default: today) YYYY-MM-DD"),
       includeUpcoming: z.boolean().optional().default(false).describe("Also show not-yet-due unpaid invoices"),
     },
-    async (args) => toContent(await run("spendesk_get_ap_aging", args))
+      async (args) => toContent(await run("spendesk_get_ap_aging", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_cash_flow_forecast",
+  maybeReg("spendesk_get_cash_flow_forecast", () =>
+    mcp.tool(
+      "spendesk_get_cash_flow_forecast",
     "Use this to forecast upcoming cash outflows based on unpaid invoices with known due dates. Use for: what payments are due in the next 30 days?, cash flow forecast for next month, upcoming disbursements by week, treasury planning.",
     {
       days: z.number().int().min(1).max(365).optional().default(30).describe("Forecast horizon in days"),
       groupBy: z.enum(["day", "week", "supplier"]).optional().default("week"),
       asOfDate: z.string().optional().describe("Reference date (default: today) YYYY-MM-DD"),
     },
-    async (args) => toContent(await run("spendesk_get_cash_flow_forecast", args))
+      async (args) => toContent(await run("spendesk_get_cash_flow_forecast", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_cash_position",
+  maybeReg("spendesk_get_cash_position", () =>
+    mcp.tool(
+      "spendesk_get_cash_position",
     "Consolidated cash obligations dashboard: overdue, due today, due next 7/30 days, total outstanding EUR, and top urgent payments. Single call for CFO/treasurer view. Combines AP aging and cash flow forecast.",
     {
       asOfDate: z.string().optional().describe("Reference date (default: today) YYYY-MM-DD"),
     },
-    async (args) => toContent(await run("spendesk_get_cash_position", args))
+      async (args) => toContent(await run("spendesk_get_cash_position", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_accruals",
+  maybeReg("spendesk_get_accruals", () =>
+    mcp.tool(
+      "spendesk_get_accruals",
     "Month/year-end close: accruals from open POs (status open or partially_received). Returns journal-entry-ready list (debit 621/expense account, credit 408000), totalAccrualEUR, and journalLines for export. Use for: year-end accruals, PO accrual report, journal entries for open POs. When prorateByServicePeriod is true (default), accrual amount is prorated by the PO service period (startDate–endDate) relative to asOfDate; when false, books full remaining amount.",
     {
       asOfDate: dateYMD.describe("Reference date for accrual (e.g. 2026-12-31) YYYY-MM-DD"),
@@ -813,165 +854,214 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         .default(true)
         .describe("When true (default), accrual is prorated by PO service period (startDate–endDate) vs asOfDate. When false, book full remaining amount."),
     },
-    async (args) => toContent(await run("spendesk_get_accruals", args))
+      async (args) => toContent(await run("spendesk_get_accruals", args))
+    )
   );
 
-  mcp.tool(
-    "spendesk_get_wallet_loads",
+  maybeReg("spendesk_get_wallet_loads", () =>
+    mcp.tool(
+      "spendesk_get_wallet_loads",
     "Get wallet loads (card top-ups, etc.). Use 'filters' to pass any API query parameters.",
     listSchema,
-    async (args) => toContent(await run("spendesk_get_wallet_loads", args))
+      async (args) => toContent(await run("spendesk_get_wallet_loads", args))
+    )
   );
-  mcp.tool("spendesk_get_wallet_summary", "Get wallet summary for dashboards.", {}, async () =>
-    toContent(await run("spendesk_get_wallet_summary", {}))
+  maybeReg("spendesk_get_wallet_summary", () =>
+    mcp.tool("spendesk_get_wallet_summary", "Get wallet summary for dashboards.", {}, async () =>
+      toContent(await run("spendesk_get_wallet_summary", {}))
+    )
   );
 
   // —— Analytical —————————————————————————————————————————————————──────────
-  mcp.tool("spendesk_get_analytical_fields", "Get analytical (custom) fields for reporting.", {}, async () =>
-    toContent(await run("spendesk_get_analytical_fields", {}))
+  maybeReg("spendesk_get_analytical_fields", () =>
+    mcp.tool("spendesk_get_analytical_fields", "Get analytical (custom) fields for reporting.", {}, async () =>
+      toContent(await run("spendesk_get_analytical_fields", {}))
+    )
   );
-  mcp.tool(
-    "spendesk_get_analytical_values",
+  maybeReg("spendesk_get_analytical_values", () =>
+    mcp.tool(
+      "spendesk_get_analytical_values",
     "Get analytical values for a given field. Call spendesk_get_analytical_fields first to get field ids. Use 'filters' to pass any API query parameters.",
     {
       fieldId: z.string().describe("Analytical field id (from spendesk_get_analytical_fields)"),
       ...listSchema,
     },
-    async (args) => toContent(await run("spendesk_get_analytical_values", args))
+      async (args) => toContent(await run("spendesk_get_analytical_values", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_cost_centers",
+  maybeReg("spendesk_get_cost_centers", () =>
+    mcp.tool(
+      "spendesk_get_cost_centers",
     "Get cost centers (for ERP mapping and reports). Use 'filters' to pass any API query parameters.",
     listSchema,
-    async (args) => toContent(await run("spendesk_get_cost_centers", args))
+      async (args) => toContent(await run("spendesk_get_cost_centers", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_expense_categories",
+  maybeReg("spendesk_get_expense_categories", () =>
+    mcp.tool(
+      "spendesk_get_expense_categories",
     "Get expense categories. Use 'filters' to pass any API query parameters.",
     listSchema,
-    async (args) => toContent(await run("spendesk_get_expense_categories", args))
+      async (args) => toContent(await run("spendesk_get_expense_categories", args))
+    )
   );
-  mcp.tool(
-    "spendesk_create_cost_center",
+  maybeReg("spendesk_create_cost_center", () =>
+    mcp.tool(
+      "spendesk_create_cost_center",
     "Create a cost center.",
     { payload: z.record(z.unknown()).describe("Cost center body") },
-    async (args) => toContent(await run("spendesk_create_cost_center", args))
+      async (args) => toContent(await run("spendesk_create_cost_center", args))
+    )
   );
-  mcp.tool(
-    "spendesk_update_cost_center",
+  maybeReg("spendesk_update_cost_center", () =>
+    mcp.tool(
+      "spendesk_update_cost_center",
     "Update a cost center by ID.",
     {
       costCenterId: z.string(),
       payload: z.record(z.unknown()).describe("Fields to update"),
     },
-    async (args) => toContent(await run("spendesk_update_cost_center", args))
+      async (args) => toContent(await run("spendesk_update_cost_center", args))
+    )
   );
-  mcp.tool(
-    "spendesk_delete_cost_center",
+  maybeReg("spendesk_delete_cost_center", () =>
+    mcp.tool(
+      "spendesk_delete_cost_center",
     "Delete a cost center by ID.",
     { costCenterId: z.string() },
-    async (args) => toContent(await run("spendesk_delete_cost_center", args))
+      async (args) => toContent(await run("spendesk_delete_cost_center", args))
+    )
   );
 
   // —— Accounting —————————————————————————————————————————————————──────────
-  mcp.tool(
-    "spendesk_get_journal_csv",
+  maybeReg("spendesk_get_journal_csv", () =>
+    mcp.tool(
+      "spendesk_get_journal_csv",
     "Get journal CSV content for an accounting export (ERP import).",
     { exportId: z.string().describe("Export ID") },
-    async (args) => toContent(await run("spendesk_get_journal_csv", args))
+      async (args) => toContent(await run("spendesk_get_journal_csv", args))
+    )
   );
-  mcp.tool(
-    "spendesk_create_accounting_export",
+  maybeReg("spendesk_create_accounting_export", () =>
+    mcp.tool(
+      "spendesk_create_accounting_export",
     "Create an accounting export.",
     { payload: z.record(z.unknown()).describe("Export request body") },
-    async (args) => toContent(await run("spendesk_create_accounting_export", args))
+      async (args) => toContent(await run("spendesk_create_accounting_export", args))
+    )
   );
-  mcp.tool("spendesk_get_journal_templates", "Get available journal templates for accounting.", {}, async () =>
-    toContent(await run("spendesk_get_journal_templates", {}))
+  maybeReg("spendesk_get_journal_templates", () =>
+    mcp.tool("spendesk_get_journal_templates", "Get available journal templates for accounting.", {}, async () =>
+      toContent(await run("spendesk_get_journal_templates", {}))
+    )
   );
 
   // —— Suppliers & Users ————————————————————————————————————————————————————
-  mcp.tool(
-    "spendesk_get_suppliers",
+  maybeReg("spendesk_get_suppliers", () =>
+    mcp.tool(
+      "spendesk_get_suppliers",
     "Get full suppliers list (all pages). Uses API pageSize for pagination like composite tools. Params: 'filters' for any API query (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For top suppliers by spend prefer spendesk_analyze_spend.",
     listSchema,
-    async (args) => toContent(await run("spendesk_get_suppliers", args))
+      async (args) => toContent(await run("spendesk_get_suppliers", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_supplier",
+  maybeReg("spendesk_get_supplier", () =>
+    mcp.tool(
+      "spendesk_get_supplier",
     "Get a supplier by ID.",
     { supplierId: z.string() },
-    async (args) => toContent(await run("spendesk_get_supplier", args))
+      async (args) => toContent(await run("spendesk_get_supplier", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_users",
+  maybeReg("spendesk_get_users", () =>
+    mcp.tool(
+      "spendesk_get_users",
     "Get users list (for approvals, dashboards). Use 'filters' to pass any API query parameters.",
     listSchema,
-    async (args) => toContent(await run("spendesk_get_users", args))
+      async (args) => toContent(await run("spendesk_get_users", args))
+    )
   );
-  mcp.tool(
-    "spendesk_get_user",
+  maybeReg("spendesk_get_user", () =>
+    mcp.tool(
+      "spendesk_get_user",
     "Get a user by ID.",
     { userId: z.string() },
-    async (args) => toContent(await run("spendesk_get_user", args))
+      async (args) => toContent(await run("spendesk_get_user", args))
+    )
   );
 
   // —— Webhooks —————————————————————————————————————————————————────────────—
-  mcp.tool(
-    "spendesk_create_webhook",
+  maybeReg("spendesk_create_webhook", () =>
+    mcp.tool(
+      "spendesk_create_webhook",
     "Create a webhook instance for real-time events.",
     { payload: z.record(z.unknown()).describe("Webhook config (url, events, etc.)") },
-    async (args) => toContent(await run("spendesk_create_webhook", args))
+      async (args) => toContent(await run("spendesk_create_webhook", args))
+    )
   );
-  mcp.tool("spendesk_get_webhooks", "List all webhook instances.", {}, async () =>
-    toContent(await run("spendesk_get_webhooks", {}))
+  maybeReg("spendesk_get_webhooks", () =>
+    mcp.tool("spendesk_get_webhooks", "List all webhook instances.", {}, async () =>
+      toContent(await run("spendesk_get_webhooks", {}))
+    )
   );
-  mcp.tool(
-    "spendesk_get_webhook",
+  maybeReg("spendesk_get_webhook", () =>
+    mcp.tool(
+      "spendesk_get_webhook",
     "Get a webhook instance by ID.",
     { webhookId: z.string() },
-    async (args) => toContent(await run("spendesk_get_webhook", args))
+      async (args) => toContent(await run("spendesk_get_webhook", args))
+    )
   );
-  mcp.tool(
-    "spendesk_update_webhook",
+  maybeReg("spendesk_update_webhook", () =>
+    mcp.tool(
+      "spendesk_update_webhook",
     "Update a webhook instance.",
     {
       webhookId: z.string(),
       payload: z.record(z.unknown()).describe("Fields to update"),
     },
-    async (args) => toContent(await run("spendesk_update_webhook", args))
+      async (args) => toContent(await run("spendesk_update_webhook", args))
+    )
   );
-  mcp.tool(
-    "spendesk_delete_webhook",
+  maybeReg("spendesk_delete_webhook", () =>
+    mcp.tool(
+      "spendesk_delete_webhook",
     "Delete a webhook instance.",
     { webhookId: z.string() },
-    async (args) => toContent(await run("spendesk_delete_webhook", args))
+      async (args) => toContent(await run("spendesk_delete_webhook", args))
+    )
   );
 
   // —— Purchase Orders ———————————————————————————————————————————————————————
-  mcp.tool(
-    "spendesk_get_purchase_orders",
+  maybeReg("spendesk_get_purchase_orders", () =>
+    mcp.tool(
+      "spendesk_get_purchase_orders",
     "Get all purchase orders from the API in one call. Fetches all pages in parallel and returns { data: purchaseOrders[], meta: { pagination: { total, pageSize } } }. Each PO is sanitized (minimal fields, no large arrays). Optional perPage: page size used when fetching (default 100, max 100).",
     {
       perPage: z.number().int().min(1).max(100).optional().describe("Items per page when fetching (default 100). All pages are fetched automatically."),
     },
-    async (args) => toContent(await run("spendesk_get_purchase_orders", args))
+      async (args) => toContent(await run("spendesk_get_purchase_orders", args))
+    )
   );
-  mcp.tool(
-    "spendesk_create_purchase_order",
+  maybeReg("spendesk_create_purchase_order", () =>
+    mcp.tool(
+      "spendesk_create_purchase_order",
     "Create a purchase order.",
     { payload: z.record(z.unknown()).describe("PO body") },
-    async (args) => toContent(await run("spendesk_create_purchase_order", args))
+      async (args) => toContent(await run("spendesk_create_purchase_order", args))
+    )
   );
 
   // —— API reference (discovery) —————————————————————————————————────────——
-  mcp.tool(
-    "spendesk_get_api_reference",
+  maybeReg("spendesk_get_api_reference", () =>
+    mcp.tool(
+      "spendesk_get_api_reference",
     "Get the API reference: list of endpoints, HTTP methods, paths, parameters (query, path, body), and MCP tool names. Use when the user asks about API structure, available endpoints, parameters for a given endpoint, or how to use the Spendesk API. Optional: filter by mcpTool (e.g. spendesk_get_settlements) or path (e.g. settlements) to get only that endpoint.",
     {
       mcpTool: z.string().optional().describe("Filter to the endpoint exposed by this MCP tool (e.g. spendesk_get_settlements)"),
       path: z.string().optional().describe("Filter to endpoints whose path contains this string (e.g. settlements, payables)"),
     },
-    async (args) => toContent(await run("spendesk_get_api_reference", args))
+      async (args) => toContent(await run("spendesk_get_api_reference", args))
+    )
   );
 }

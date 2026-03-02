@@ -74,17 +74,3 @@ What are the possible values for the analytical field "Category"?
 ```
 
 ---
-
-## spendesk_get_purchase_orders
-
-Returns purchase orders with filters: status, state, supplierId, userId, date range (from, to). Use for PO listing and to cross-check with payables.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `filters` | object | No | `status`, `state`, `supplierId`, `userId`, `from`, `to` (camelCase). |
-
-**Example prompt**
-
-```
-List open purchase orders for Q1 2026. Show PO number, supplier, amount, and status.
-```

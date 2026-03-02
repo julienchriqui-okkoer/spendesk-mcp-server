@@ -20,7 +20,7 @@ The Spendesk MCP exposes **composite tools** (high-level, analysis-ready) and **
 | `spendesk_get_cash_flow_forecast` | Upcoming cash outflows from unpaid invoices. Group by day, week, or supplier. Horizon in days (e.g. 30). | Treasury, disbursement forecast. |
 | `spendesk_get_cash_position` | CFO-style dashboard: overdue, due today, next 7 days, next 30 days, total outstanding, top urgent payments. | Cash obligations at a glance. |
 
-## Core API tools (12)
+## Core API tools (13)
 
 | Tool | Description | Best for |
 |------|-------------|----------|
@@ -29,7 +29,6 @@ The Spendesk MCP exposes **composite tools** (high-level, analysis-ready) and **
 | `spendesk_get_payables_snapshot` | Get payables from a snapshot (paginated, max 100/page). | Paging through snapshot results. |
 | `spendesk_get_payable` | Single payable by ID. | Invoice detail. |
 | `spendesk_get_payable_attachments` | PDF and attachments for a payable. | Download or view attachments. |
-| `spendesk_get_purchase_orders` | PO list. Filters: status, state, supplierId, userId, from, to. | PO listing, filtering by supplier. |
 | `spendesk_get_suppliers` | Full supplier directory. | Lookup supplier IDs and names. |
 | `spendesk_get_supplier` | Single supplier by ID. | Supplier detail. |
 | `spendesk_get_users` | Users and approvers. | User lookup. |

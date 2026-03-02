@@ -39,6 +39,31 @@ SPENDESK_API_TOKEN=your_token_here
 # SPENDESK_USE_DEMO=true
 ```
 
+### Désactiver certains outils (expérimentaux)
+
+Pour ne pas exposer certains tools (par exemple expérimentaux), créez un fichier de configuration. Les tools désactivés ne sont **pas enregistrés** et n’apparaissent **pas** dans la référence API (tool `spendesk_get_api_reference` et ressource `spendesk://api-reference`).
+
+Fichier **`config/tools.config.json`** à la racine du projet (ou `tools.config.json`) :
+
+```json
+{
+  "disabledTools": [
+    "spendesk_get_accruals",
+    "spendesk_get_purchase_orders"
+  ]
+}
+```
+
+Le serveur lit ce fichier au démarrage. Pour réactiver un tool, retirez son nom de `disabledTools` et redémarrez le serveur.
+
+**Doc Mintlify** : pour que la doc (spendesk-mcp-docs) n’affiche que les tools activés, exécutez avant de lancer ou déployer la doc :
+
+```bash
+npm run docs:sync-tools
+```
+
+Puis lancez la doc en local avec `npm run docs:dev` (sync + `mintlify dev`). Les pages overview, bookkeeping, accounts-payable, reference-data et spend-analysis sont mises à jour pour masquer les tools désactivés.
+
 ## Utilisation
 
 ### Lancer le serveur (stdio)

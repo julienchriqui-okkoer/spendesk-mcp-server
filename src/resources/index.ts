@@ -6,7 +6,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpendeskClient } from "../spendesk-api/client.js";
 import { SpendeskPaths } from "../spendesk-api/endpoints.js";
-import { API_REFERENCE } from "../lib/api-reference.js";
+import { getApiReference } from "../lib/api-reference.js";
 
 const SPENDESK_URI_PREFIX = "spendesk://";
 
@@ -53,7 +53,7 @@ export function registerResources(mcp: McpServer, api: SpendeskClient): void {
         data = await api.get(SpendeskPaths.getJournalTemplates);
         break;
       case "api-reference":
-        data = API_REFERENCE;
+        data = getApiReference();
         break;
       default:
         return jsonResource(resourceUri, JSON.stringify({ error: `Unknown resource: ${path}` }, null, 2));
