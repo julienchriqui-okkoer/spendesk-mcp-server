@@ -114,6 +114,27 @@ export function initDatabase(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_companies_client_id ON companies(client_id);
     CREATE INDEX IF NOT EXISTS idx_companies_company_key ON companies(company_key);
+
+    -- MCP usage monitoring: generic event table for HTTP and tool calls
+    CREATE TABLE IF NOT EXISTS mcp_usage_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,                         -- ISO timestamp
+      client_hash TEXT,                         -- anonymized client identifier (hash of API key or credentials)
+      company_key TEXT,                         -- optional company identifier (if available)
+      session_id TEXT,                          -- optional MCP session id
+      method TEXT,                              -- MCP method (initialize, tools/call, resources/read, etc.) or HTTP method
+      tool_name TEXT,                           -- MCP tool name when applicable
+      category TEXT,                            -- logical category (spend_analysis, ap_aging, bookkeeping, reference_data, etc.)
+      duration_ms INTEGER,                      -- execution time in milliseconds
+      status TEXT,                              -- success / error
+      error_code TEXT,                          -- optional error code or class name
+      result_size INTEGER,                      -- approximate response size (bytes or item count)
+      meta_json TEXT                            -- additional structured metadata as JSON (sanitized)
+    );
+    CREATE INDEX IF NOT EXISTS idx_mcp_usage_ts ON mcp_usage_events(ts);
+    CREATE INDEX IF NOT EXISTS idx_mcp_usage_client ON mcp_usage_events(client_hash);
+    CREATE INDEX IF NOT EXISTS idx_mcp_usage_tool ON mcp_usage_events(tool_name);
+    CREATE INDEX IF NOT EXISTS idx_mcp_usage_category ON mcp_usage_events(category);
   `);
 }
 

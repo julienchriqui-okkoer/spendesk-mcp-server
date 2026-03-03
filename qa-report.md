@@ -24,4 +24,102 @@
 - **MCP :** 11/11 OK.
 - **Analytical :** test sur `GET /v1/analytical-fields` (liste des champs) et sur `GET /v1/analytical-fields/{fieldId}/values` (valeurs d’un champ).
 
+---
+
+## Monitoring MCP – Requêtes d’usage suggérées
+
+Base : table `mcp_usage_events` (voir schéma SQLite).
+
+### Volume global par jour
+
+```sql
+SELECT
+  substr(ts, 1, 10) AS day,
+  COUNT(*) AS total_events
+FROM mcp_usage_events
+GROUP BY day
+ORDER BY day DESC
+LIMIT 30;
+```
+
+### Top tools utilisés
+
+```sql
+SELECT
+  tool_name,
+  category,
+  COUNT(*) AS calls
+FROM mcp_usage_events
+WHERE tool_name IS NOT NULL
+GROUP BY tool_name, category
+ORDER BY calls DESC
+LIMIT 20;
+```
+
+### Taux d’erreur par tool
+
+```sql
+SELECT
+  tool_name,
+  SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
+  COUNT(*) AS total,
+  ROUND(100.0 * errors / total, 2) AS error_rate_pct
+FROM mcp_usage_events
+WHERE tool_name IS NOT NULL
+GROUP BY tool_name
+HAVING total >= 10
+ORDER BY error_rate_pct DESC;
+```
+
+### Latence moyenne par catégorie
+
+```sql
+SELECT
+  category,
+  COUNT(*) AS calls,
+  ROUND(AVG(duration_ms), 1) AS avg_ms,
+  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms), 1) AS p95_ms
+FROM mcp_usage_events
+WHERE duration_ms IS NOT NULL
+GROUP BY category
+ORDER BY avg_ms DESC;
+```
+
+*(Si SQLite ne supporte pas `PERCENTILE_CONT`, remplacer par un approximation ou ignorer la colonne p95.)*
+
+### Usage par client (hash)
+
+```sql
+SELECT
+  client_hash,
+  COUNT(*) AS calls
+FROM mcp_usage_events
+WHERE client_hash IS NOT NULL
+GROUP BY client_hash
+ORDER BY calls DESC
+LIMIT 50;
+```
+
+### Alertes simples (exemples de seuils)
+
+- **Taux d’erreur > 5 %** sur les 15 dernières minutes :
+
+```sql
+SELECT
+  SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
+  COUNT(*) AS total,
+  ROUND(100.0 * errors / total, 2) AS error_rate_pct
+FROM mcp_usage_events
+WHERE ts >= datetime('now', '-15 minutes');
+```
+
+- **Volume > 500 appels** sur les 15 dernières minutes :
+
+```sql
+SELECT
+  COUNT(*) AS total
+FROM mcp_usage_events
+WHERE ts >= datetime('now', '-15 minutes');
+```
+
 **Légende:** ✅ OK = succès, ❌ = erreur. Count = nombre d’éléments retournés.

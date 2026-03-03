@@ -17,6 +17,7 @@ import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient, type ClientCredentials } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
+import { logHttpRequestUsage } from "./lib/usage-logger.js";
 
 function getApiToken(): string | null {
   return process.env.SPENDESK_API_TOKEN || null;
@@ -208,6 +209,7 @@ app.get("/doc", (_req: Request, res: Response) => {
 
 // Apply authentication middleware to MCP routes
 app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
+  const start = Date.now();
   try {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     const sessionInfo = sessionId ? sessionStore.get(sessionId) : undefined;
@@ -252,6 +254,31 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
         error: { code: -32603, message: errorMessage },
         id: null,
       });
+    }
+  } finally {
+    try {
+      const durationMs = Date.now() - start;
+      const authHeader = req.headers.authorization;
+      const xClientToken = req.headers["x-client-token"] as string | undefined;
+      const companyKey = (req.headers["x-company-id"] as string | undefined) ?? req.companyId ?? undefined;
+      const clientIdentifier =
+        xClientToken ||
+        (authHeader && authHeader.toLowerCase().startsWith("bearer ")
+          ? authHeader.slice(7).trim()
+          : undefined) ||
+        req.clientApiKey;
+
+      logHttpRequestUsage({
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        durationMs,
+        clientIdentifier,
+        companyKey: companyKey ?? null,
+        sessionId: (req.headers["mcp-session-id"] as string | undefined) ?? null,
+      });
+    } catch (logErr) {
+      console.error("[UsageLogger] Failed to log /mcp HTTP request:", logErr);
     }
   }
 });

@@ -22,6 +22,7 @@ import {
 import { getApiReference } from "../lib/api-reference.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
 import { isToolEnabled } from "../lib/tools-config.js";
+import { logToolCallUsage, TOOL_CATEGORY } from "../lib/usage-logger.js";
 import { z } from "zod";
 
 const paginationSchema = {
@@ -344,7 +345,12 @@ function buildPayablesSnapshotPayload(args: {
 
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   const run = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
-    switch (name) {
+    const start = Date.now();
+    let status: "success" | "error" = "success";
+    let errorCode: string | null = null;
+    try {
+      let result: unknown;
+      switch (name) {
       case "spendesk_get_settlements": {
         const settlementParams = buildSettlementsQueryParams(args as {
           page?: number;
@@ -545,11 +551,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           purchaseOrders: v.purchaseOrders,
           payables: v.payables,
         }));
-        return { period: { from, to }, purchaseOrders, payables: payables.map((p) => p.raw), bySupplier };
+        result = { period: { from, to }, purchaseOrders, payables: payables.map((p) => p.raw), bySupplier };
+        break;
       }
 
       case "spendesk_analyze_spend":
-        return analyzeSpend(api, {
+        result = await analyzeSpend(api, {
           from: String(args.from),
           to: String(args.to),
           groupBy: args.groupBy as AnalyzeSpendParams["groupBy"],
@@ -559,38 +566,44 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           filters: args.filters as AnalyzeSpendFilters | undefined,
           includeDetails: args.includeDetails === true,
         });
+        break;
       case "spendesk_get_bookkeeping_pipeline":
-        return getBookkeepingPipeline(api, {
+        result = await getBookkeepingPipeline(api, {
           from: String(args.from),
           to: String(args.to),
           status: args.status as "created" | "prepared" | "exported" | undefined,
           includeVatBreakdown: args.includeVatBreakdown === true,
           includeJournalEntries: args.includeJournalEntries === true,
         });
+        break;
       case "spendesk_get_payment_status":
-        return getPaymentStatus(api, {
+        result = await getPaymentStatus(api, {
           from: String(args.from),
           to: String(args.to),
           status: args.status as "paid" | "unpaid" | "partial" | undefined,
           currency: args.currency as string | undefined,
         });
+        break;
       case "spendesk_get_ap_aging":
-        return getApAging(api, {
+        result = await getApAging(api, {
           asOfDate: args.asOfDate as string | undefined,
           includeUpcoming: args.includeUpcoming === true,
         });
+        break;
       case "spendesk_get_cash_flow_forecast":
-        return getCashFlowForecast(api, {
+        result = await getCashFlowForecast(api, {
           days: args.days != null ? Number(args.days) : 30,
           groupBy: (args.groupBy as "day" | "week" | "supplier") ?? "week",
           asOfDate: args.asOfDate as string | undefined,
         });
+        break;
       case "spendesk_get_cash_position":
-        return getCashPosition(api, {
+        result = await getCashPosition(api, {
           asOfDate: args.asOfDate as string | undefined,
         });
+        break;
       case "spendesk_get_accruals":
-        return getAccruals(api, {
+        result = await getAccruals(api, {
           asOfDate: String(args.asOfDate),
           prorateByServicePeriod: args.prorateByServicePeriod as boolean | undefined,
         });
@@ -598,11 +611,68 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_get_api_reference": {
         const mcpTool = args.mcpTool as string | undefined;
         const path = args.path as string | undefined;
-        return getApiReference(mcpTool ? { mcpTool } : path ? { path } : undefined);
+        result = getApiReference(mcpTool ? { mcpTool } : path ? { path } : undefined);
+        break;
       }
 
       default:
         throw new Error(`Unknown tool: ${name}`);
+      }
+
+      const durationMs = Date.now() - start;
+      let resultSize: number | null = null;
+      try {
+        if (typeof result === "string") {
+          resultSize = result.length;
+        } else if (Array.isArray(result)) {
+          resultSize = result.length;
+        } else if (result && typeof result === "object") {
+          const json = JSON.stringify(result);
+          resultSize = json.length;
+        }
+      } catch {
+        resultSize = null;
+      }
+
+      const category = TOOL_CATEGORY[name] ?? "other";
+      const meta: Record<string, unknown> = {};
+      if ("from" in args || "to" in args) {
+        meta.from = (args as { from?: unknown }).from;
+        meta.to = (args as { to?: unknown }).to;
+      }
+      if ("groupBy" in args) {
+        meta.groupBy = (args as { groupBy?: unknown }).groupBy;
+      }
+
+      logToolCallUsage({
+        toolName: name,
+        category,
+        durationMs,
+        status,
+        errorCode,
+        resultSize: resultSize ?? undefined,
+        meta: Object.keys(meta).length ? meta : undefined,
+      });
+
+      return result;
+    } catch (err) {
+      status = "error";
+      errorCode = err instanceof Error ? err.name || err.message : "UnknownError";
+      const durationMs = Date.now() - start;
+
+      logToolCallUsage({
+        toolName: name,
+        category: TOOL_CATEGORY[name] ?? "other",
+        durationMs,
+        status,
+        errorCode,
+        resultSize: null,
+        meta: {
+          message: err instanceof Error ? err.message : String(err),
+        },
+      });
+
+      throw err;
     }
   };
 
