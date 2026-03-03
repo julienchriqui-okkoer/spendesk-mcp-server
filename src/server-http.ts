@@ -18,6 +18,7 @@ import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient, type ClientCredentials } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
 import { logHttpRequestUsage } from "./lib/usage-logger.js";
+import { getTopTools, getVolumeByDay, getRecentCalls } from "./lib/usage-stats.js";
 
 function getApiToken(): string | null {
   return process.env.SPENDESK_API_TOKEN || null;
@@ -178,11 +179,13 @@ app.get("/", (_req: Request, res: Response) => {
       status: "ok",
       mcp: "/mcp",
       doc: "/doc",
+      usage: "/usage",
       endpoints: {
         post: "POST /mcp (JSON-RPC)",
         get: "GET /mcp (SSE, send mcp-session-id)",
         delete: "DELETE /mcp (close session)",
         doc: "GET /doc (redirect to documentation)",
+        usage: "GET /usage (MCP usage dashboard, optional USAGE_UI_SECRET)",
       },
     })
   );
@@ -203,6 +206,102 @@ app.get("/doc", (_req: Request, res: Response) => {
   <h1>Documentation</h1>
   <p>Pour afficher la documentation MCP (Mintlify), définissez la variable d'environnement <code>DOCS_URL</code> avec l'URL de votre doc (ex. https://votre-doc.mintlify.app).</p>
   <p>Une fois configurée, <code>GET /doc</code> redirigera automatiquement vers cette URL.</p>
+</body>
+</html>`);
+});
+
+// GET /usage — MCP usage dashboard (optional: set USAGE_UI_SECRET to require ?secret= or Authorization: Bearer)
+const USAGE_UI_SECRET = process.env.USAGE_UI_SECRET?.trim() || "";
+app.get("/usage", (req: Request, res: Response) => {
+  if (USAGE_UI_SECRET) {
+    const authHeader = req.headers.authorization;
+    const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const querySecret = (req.query.secret as string)?.trim() || "";
+    if (bearer !== USAGE_UI_SECRET && querySecret !== USAGE_UI_SECRET) {
+      res.status(401).type("text/html").send(
+        "<!DOCTYPE html><html><body><p>Unauthorized. Set ?secret= or Authorization: Bearer with USAGE_UI_SECRET.</p></body></html>"
+      );
+      return;
+    }
+  }
+
+  const topTools = getTopTools(20);
+  const volumeByDay = getVolumeByDay(30);
+  const recentCalls = getRecentCalls(50);
+
+  const data = { topTools, volumeByDay, recentCalls };
+  const dataJson = JSON.stringify(data).replace(/<\/script>/gi, "<\\/script>");
+
+  res.status(200).type("text/html").send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCP Usage — Spendesk</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0; }
+    h1 { font-size: 1.5rem; margin-bottom: 24px; }
+    h2 { font-size: 1.1rem; margin-top: 32px; margin-bottom: 12px; color: #94a3b8; }
+    section { max-width: 900px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    tr:hover { background: #1e293b; }
+    .chart-wrap { max-width: 600px; height: 220px; margin-bottom: 24px; }
+    .meta { font-size: 0.75rem; color: #64748b; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>MCP Usage</h1>
+  <section>
+    <h2>Volume par jour (30 derniers jours)</h2>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+  </section>
+  <section>
+    <h2>Top tools</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Catégorie</th><th>Appels</th></tr></thead>
+      <tbody id="top-tools"></tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Derniers appels</h2>
+    <table>
+      <thead><tr><th>Date</th><th>Méthode</th><th>Tool</th><th>Catégorie</th><th>Statut</th><th>Durée (ms)</th><th>Meta</th></tr></thead>
+      <tbody id="recent-calls"></tbody>
+    </table>
+  </section>
+  <script type="application/json" id="usage-data">${dataJson}</script>
+  <script>
+    var raw = document.getElementById('usage-data').textContent;
+    var data = JSON.parse(raw);
+    var labels = data.volumeByDay.map(function(r) { return r.day; });
+    var values = data.volumeByDay.map(function(r) { return r.total; });
+    new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{ label: 'Appels', data: values, borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.1)', fill: true }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+    var topToolsEl = document.getElementById('top-tools');
+    data.topTools.forEach(function(r) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + escapeHtml(r.tool_name) + '</td><td>' + escapeHtml(r.category || '') + '</td><td>' + r.calls + '</td>';
+      topToolsEl.appendChild(tr);
+    });
+    var recentEl = document.getElementById('recent-calls');
+    data.recentCalls.forEach(function(r) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + escapeHtml(r.ts) + '</td><td>' + escapeHtml(r.method || '') + '</td><td>' + escapeHtml(r.tool_name || '') + '</td><td>' + escapeHtml(r.category || '') + '</td><td>' + escapeHtml(r.status || '') + '</td><td>' + (r.duration_ms != null ? r.duration_ms : '') + '</td><td class="meta" title="' + escapeAttr(r.meta || '') + '">' + escapeHtml((r.meta || '').slice(0, 60)) + '</td>';
+      recentEl.appendChild(tr);
+    });
+    function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function escapeAttr(s) { return String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+  </script>
 </body>
 </html>`);
 });
@@ -335,6 +434,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log("  GET  /mcp — SSE stream (send mcp-session-id header)");
   console.log("  DELETE /mcp — close session (send mcp-session-id header)");
   console.log("  GET  /doc — Documentation (redirect if DOCS_URL set)");
+  console.log("  GET  /usage — MCP usage dashboard");
   
   // Log environment status
   if (process.env.ENCRYPTION_KEY) {

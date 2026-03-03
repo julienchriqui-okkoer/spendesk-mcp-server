@@ -28,6 +28,7 @@ Variables d'environnement :
 | `SPENDESK_USE_DEMO` | Non | `true` ou `1` pour utiliser l'API démo (`https://public-api.demo.spendesk.com`). |
 | `DB_PATH` | Non | Chemin de la base SQLite (défaut : `./data/clients.db`). |
 | `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
+| `USAGE_UI_SECRET` | Non | Si définie, la page **GET /usage** (dashboard MCP) exige `?secret=<valeur>` ou `Authorization: Bearer <valeur>`. |
 
 Exemple avec un fichier `.env` (à ne pas commiter) :
 
@@ -173,6 +174,7 @@ Endpoints :
 - **GET /mcp** — Flux SSE (envoyer l'en-tête `mcp-session-id`).
 - **DELETE /mcp** — Fermer la session (en-tête `mcp-session-id`).
 - **GET /doc** — Redirection vers la documentation (Mintlify). Définir `DOCS_URL` pour l’URL cible ; sinon une page d’information s’affiche.
+- **GET /usage** — Dashboard d’usage MCP (volume par jour, top tools, derniers appels). Optionnel : définir `USAGE_UI_SECRET` pour protéger l’accès.
 
 ### Portail Multi-tenant
 
