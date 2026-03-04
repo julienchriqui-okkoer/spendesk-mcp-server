@@ -23,21 +23,21 @@ Variables d'environnement :
 
 | Variable | Obligatoire | Description |
 |----------|--------------|-------------|
-| `ENCRYPTION_KEY` | Oui (multi-tenant) | Clé de chiffrement 32 bytes (64 caractères hex) pour les tokens clients. Générer avec `node scripts/generate-encryption-key.mjs`. |
-| `SPENDESK_API_TOKEN` | Optionnel | Token Bearer (OAuth2 ou identifiants API) en mode fallback. **Ne pas commiter.** Si non défini, les clients doivent s'enregistrer via `/ui`. |
+| `SPENDESK_API_TOKEN` | Recommandé | Token Bearer (OAuth2 ou identifiants API) utilisé par défaut quand le client ne fournit pas de credentials explicites. **Ne pas commiter.** |
 | `SPENDESK_USE_DEMO` | Non | `true` ou `1` pour utiliser l'API démo (`https://public-api.demo.spendesk.com`). |
-| `DB_PATH` | Non | Chemin de la base SQLite (défaut : `./data/clients.db`). |
+| `DB_PATH` | Non | Chemin de la base SQLite utilisée pour le **monitoring** (`mcp_usage_events`). Défaut : `./data/clients.db`. |
 | `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
 | `USAGE_UI_SECRET` | Non | Si définie, la page **GET /usage** (dashboard MCP) exige `?secret=<valeur>` ou `Authorization: Bearer <valeur>`. |
 
 Exemple avec un fichier `.env` (à ne pas commiter) :
 
 ```bash
-# Générer avec: node scripts/generate-encryption-key.mjs
-ENCRYPTION_KEY=your_64_character_hex_key_here
-
-# Optionnel: token fallback si pas de clients enregistrés
+# Token Spendesk utilisé par défaut si le client ne fournit pas de credentials (ne pas commiter)
 SPENDESK_API_TOKEN=your_token_here
+
+# Ou client credentials (alternative à SPENDESK_API_TOKEN)
+# SPENDESK_CLIENT_ID=your_client_id
+# SPENDESK_CLIENT_SECRET=your_client_secret
 # SPENDESK_USE_DEMO=true
 ```
 
@@ -176,79 +176,32 @@ Endpoints :
 - **GET /doc** — Redirection vers la documentation (Mintlify). Définir `DOCS_URL` pour l’URL cible ; sinon une page d’information s’affiche.
 - **GET /usage** — Dashboard d’usage MCP (volume par jour, top tools, derniers appels). Optionnel : définir `USAGE_UI_SECRET` pour protéger l’accès.
 
-### Portail Multi-tenant
+### Authentification HTTP et déploiement
 
-L’interface d’enregistrement (`/ui`) n’est pas exposée pour le moment. L’authentification se fait via les identifiants fournis par le client (Bearer, headers) ou le fallback des variables d’environnement (voir Credentials fournis par le client et Mode Fallback ci-dessous).
+L’interface `/ui` et le mode multi-tenant (base SQLite + clés API) ont été retirés.  
+L’authentification se fait désormais uniquement via :
 
-Le serveur supporte un mode **multi-tenant** (base SQLite + clés API) pour les déploiements qui l’utilisent déjà. La documentation utilisateur est accessible via **GET /doc** (définir `DOCS_URL` pour rediriger vers la doc Mintlify).
-
-#### Configuration (si multi-tenant utilisé en interne)
-
-1. **Générer une clé de chiffrement** :
-   ```bash
-   node scripts/generate-encryption-key.mjs
-   ```
-   Copiez la clé générée dans votre `.env` :
-   ```bash
-   ENCRYPTION_KEY=votre_cle_hex_64_caracteres
-   ```
-
-2. **Démarrer le serveur** :
-   ```bash
-   npm run start:http
-   ```
-
-#### Enregistrement d'un client (hors interface)
-
-L’interface web d’enregistrement n’est pas exposée. Les clients s’authentifient en fournissant un Bearer token (token Spendesk ou clé API existante) ou via les headers (voir section Credentials fournis par le client).
-
-#### Utilisation de la clé API
-
-Le client doit inclure sa clé API dans le header `X-Client-Token` de toutes ses requêtes MCP :
-
-```bash
-curl -H "X-Client-Token: <clé-api>" \
-     -H "Content-Type: application/json" \
-     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{...}}' \
-     https://votre-domaine.com/mcp
-```
-
-#### Multi-company (plusieurs companies Spendesk)
-
-Un même client peut avoir **plusieurs companies** (chacune avec son propre token Spendesk), par exemple Spendesk FR et Spendesk UK. Cela permet de construire un **dashboard consolidé** (ex. avec Dust) en interrogeant chaque company puis en agrégeant les données.
-
-1. **Enregistrement** : Les companies et clés API sont gérées en interne (base SQLite). Pour ajouter des companies, utiliser les mêmes mécanismes d’auth (Bearer, credentials) que pour une seule company.
-
-2. **Headers MCP** :
-   - **`X-Client-Token`** : votre clé API (obligatoire pour identifier le compte).
-   - **`X-Company-Id`** (optionnel) : la **company_key** de la company à interroger (ex. `spendesk-fr`, `spendesk-uk`). Si absent, le serveur utilise la première company ou le token legacy du client.
-
-3. **Exemple avec deux companies (Dust, dashboard consolidé)** :
-   - **Dans Dust** : Dust n’envoie que le header `Authorization: Bearer <token>`. Le serveur accepte ce format. Pour avoir **plusieurs companies** dans Dust, ajoutez **plusieurs MCP servers** (même URL, Bearer différent) :
-     - MCP 1 : URL = `https://votre-domaine.railway.app/mcp`, **Bearer** = `votre-clé-api:spendesk-fr`
-     - MCP 2 : URL = `https://votre-domaine.railway.app/mcp`, **Bearer** = `votre-clé-api:spendesk-uk`
-   - Chaque “serveur” expose les mêmes tools mais ciblent une company différente ; les agents Dust peuvent appeler l’un ou l’autre pour agréger les données (ex. dashboard consolidé).
-   - Sans `:company_key`, le Bearer = seule la clé API utilise la company par défaut (première enregistrée).
-
-#### Sécurité
-
-- Les tokens Spendesk sont **chiffrés** en base de données (AES-256-GCM).
-- Chaque client reçoit une **clé API unique** (UUID v4) qui ne peut pas être devinée.
-- Les tokens ne sont jamais loggés ou exposés dans les réponses.
-- La validation du token Spendesk est effectuée avant stockage.
+- des **credentials fournis par le client** (client credentials ou token API Spendesk), ou
+- des **variables d’environnement** configurées sur le serveur.
 
 #### Credentials fournis par le client (Dust / Claude)
 
-Le **client_id** et **client_secret** Spendesk peuvent être fournis par le client à la connexion, sans les mettre en dur sur Railway :
+Le **client_id** et le **client_secret** Spendesk peuvent être fournis par le client à la connexion, sans les mettre en dur sur Railway :
 
-- **Bearer** : `Authorization: Bearer client_credentials:<base64(client_id:client_secret)>`. Générer avec : `node scripts/generate-dust-bearer.mjs <client_id> <client_secret>` et coller le résultat dans le champ Bearer (ex. dans Dust).
+- **Bearer** : `Authorization: Bearer client_credentials:<base64(client_id:client_secret)>`.  
+  Générer avec : `node scripts/generate-dust-bearer.mjs <client_id> <client_secret>` et coller le résultat dans le champ Bearer (ex. dans Dust).
 - **Headers** : `X-Spendesk-Client-Id: <id>` et `X-Spendesk-Client-Secret: <secret>`.
 
 Le serveur appelle alors `POST /v1/auth/token` avec ces identifiants pour la session et renouvelle le token automatiquement sur 401.
 
-#### Mode Fallback
+#### Mode Fallback (variables d’environnement)
 
-Si aucun header d’auth n’est fourni, le serveur utilise les variables d’environnement : **client credentials** (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`) ou **token Bearer** (`SPENDESK_API_TOKEN`, optionnellement `SPENDESK_REFRESH_TOKEN`). Cela permet une compatibilité ascendante avec les déploiements existants.
+Si aucun header d’auth n’est fourni, le serveur utilise les variables d’environnement :
+
+- **Client credentials** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (POST `/v1/auth/token`), ou
+- **Token Bearer** : `SPENDESK_API_TOKEN` (optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401).
+
+Cela permet d’exécuter le MCP en **mode single-tenant** (un seul compte Spendesk servi par cette instance).
 
 #### Déploiement (Docker, PaaS)
 
@@ -256,28 +209,28 @@ Si aucun header d’auth n’est fourni, le serveur utilise les variables d’en
 
 ```bash
 docker build -t spendesk-mcp-server .
-docker run -p 3000:3000 -e ENCRYPTION_KEY=your_key -e SPENDESK_API_TOKEN=your_token spendesk-mcp-server
+docker run -p 3000:3000 \
+  -e SPENDESK_API_TOKEN=your_token \
+  spendesk-mcp-server
 ```
 
 **Déployer sur Railway**
 
-1. **Créer un projet** : [railway.app](https://railway.app) → New Project → Deploy from GitHub repo (ou `railway link` + `railway up` en CLI).
+1. **Créer un projet** : [railway.app](https://railway.app) → New Project → Deploy from GitHub repo.
 2. **Build** : Railway détecte le **Dockerfile** et build l'image, ou utilise `railway.json` (build : `npm ci && npm run build`, start : `node dist/server-http.js`). Si un Dockerfile est présent, il est utilisé en priorité.
 3. **Variables d'environnement** (Settings → Variables) :
-   - `ENCRYPTION_KEY` (obligatoire pour multi-tenant) — générer avec `node scripts/generate-encryption-key.mjs`.
-   - **Auth Spendesk** (au moins une option pour le mode fallback) :
+   - **Auth Spendesk** (au moins une option) :
      - **Option A — Client credentials** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (récupérés depuis le dashboard Spendesk). Le serveur appelle `POST /v1/auth/token` avec Basic auth et renouvelle le token automatiquement.
      - **Option B — Token Bearer** : `SPENDESK_API_TOKEN` (token API Spendesk). Optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401.
    - `ALLOWED_HOSTS` (recommandé) — host(s) autorisés pour la validation DNS rebinding, ex. : `votre-service.railway.app` (sans `https://`). Tu peux récupérer le domaine après le premier déploiement (Settings → Networking → Generate domain).
-4. **Domaine** : Settings → Networking → Generate domain. L'URL MCP sera `https://<ton-domaine>.railway.app/mcp`, le portail sera sur `https://<ton-domaine>.railway.app/ui`.
+4. **Domaine** : Settings → Networking → Generate domain. L'URL MCP sera `https://<ton-domaine>.railway.app/mcp`.
 5. **Vérifier** : `MCP_BASE_URL=https://<ton-domaine>.railway.app node scripts/test-mcp-http.mjs`
 
 **Render / Fly.io**
 
 - Déployer le dépôt (build : `npm ci && npm run build`, start : `node dist/server-http.js`).
-- Définir `ENCRYPTION_KEY` (obligatoire), puis soit `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`, soit `SPENDESK_API_TOKEN` (optionnel), et, si besoin, `ALLOWED_HOSTS` (domaine public de l'app).
+- Définir soit `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`, soit `SPENDESK_API_TOKEN` (et, si besoin, `ALLOWED_HOSTS` pour le domaine public de l'app).
 - L'URL du serveur MCP : `https://votre-app.onrender.com/mcp` (ou ton domaine + `/mcp`).
-- Le portail : `https://votre-app.onrender.com/ui` (ou ton domaine + `/ui`).
 
 **Déployer la documentation (Mintlify) sur Railway**
 
@@ -288,11 +241,11 @@ La doc (Mintlify) est dans `spendesk-mcp-docs/`. Pour la déployer sur Railway e
 Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Responses API) :
 
 1. **Server URL** : `https://votre-domaine.com/mcp` (URL publique de votre déploiement + `/mcp`).
-2. **Authorization** (au choix) :
+ 2. **Authorization** (au choix) :
    - **Client credentials (fournis par le client, sans rien en dur sur Railway)** : pour que Dust/Claude envoie le client_id et client_secret Spendesk à la connexion :
      - **Option A — Bearer** : Bearer = `client_credentials:<base64(client_id:client_secret)>`. Générer le token avec : `node scripts/generate-dust-bearer.mjs <client_id> <client_secret>` puis coller la sortie dans le champ Bearer de Dust.
      - **Option B — Headers** : ajouter les headers `X-Spendesk-Client-Id` et `X-Spendesk-Client-Secret` (section « Networking & Headers » dans Dust). Pas besoin de Bearer dans ce cas.
-   - **Mode multi-tenant (clé API)** : header `X-Client-Token: <clé-api>` (ou Bearer = clé API). La clé est obtenue via le portail `/ui` après avoir enregistré un token Spendesk. Pour une company précise : Bearer = `clé-api:company_key` (ex. `clé:spendesk-fr`).
+   - **Token API direct** : Bearer = `SPENDESK_API_TOKEN` (token API Spendesk).
    - **Mode fallback** : si aucun header n’est envoyé, le serveur utilise les variables d’environnement (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` ou `SPENDESK_API_TOKEN`).
    - Pour protéger l’accès, mettre un reverse proxy (auth, API key) devant `/mcp`.
 
@@ -304,40 +257,13 @@ Un script vérifie que le serveur HTTP répond correctement (GET /, initialize, 
 
 ```bash
 # Test en local (le serveur doit tourner : npm run start:http)
-node scripts/test-mcp-http.mjs
+SPENDESK_API_TOKEN=<votre-token> node scripts/test-mcp-http.mjs
 
 # Test vers une URL déployée
-MCP_BASE_URL=https://votre-app.up.railway.app node scripts/test-mcp-http.mjs
+MCP_BASE_URL=https://votre-app.up.railway.app SPENDESK_API_TOKEN=<votre-token> node scripts/test-mcp-http.mjs
 ```
 
 En cas de succès : `✓ MCP HTTP test passed.`
-
-#### Comment tester (multi-tenant / multi-company)
-
-1. **Démarrer le serveur** (avec `ENCRYPTION_KEY` et optionnellement `SPENDESK_API_TOKEN`) :
-   ```bash
-   npm run start:http
-   ```
-
-2. **Récupérer une clé API** : aller sur `http://localhost:3000/ui`, entrer un token Spendesk (et un nom de company, ex. « Spendesk FR »), valider. Sur la page de succès, copier la **clé API** et noter la **company_key** (ex. `spendesk-fr`). Pour une deuxième company : cliquer sur « Gérer mes companies », ajouter « Spendesk UK » avec son token.
-
-3. **Tester le MCP avec la clé API** :
-   ```bash
-   X_CLIENT_TOKEN=<votre-clé-api> node scripts/test-mcp-http.mjs
-   ```
-
-4. **Tester en ciblant une company** (si vous en avez plusieurs) :
-   ```bash
-   X_CLIENT_TOKEN=<clé-api> X_COMPANY_ID=spendesk-fr node scripts/test-mcp-http.mjs
-   X_CLIENT_TOKEN=<clé-api> X_COMPANY_ID=spendesk-uk node scripts/test-mcp-http.mjs
-   ```
-
-5. **Tester vers un déploiement** (ex. Railway) :
-   ```bash
-   MCP_BASE_URL=https://votre-app.railway.app X_CLIENT_TOKEN=<clé-api> node scripts/test-mcp-http.mjs
-   ```
-
-Sans `X_CLIENT_TOKEN`, le script utilise le token fallback (`SPENDESK_API_TOKEN`) si le serveur en est configuré.
 
 #### Tester les outils composites (analyse spend, bookkeeping, AP aging, cash flow)
 
@@ -347,7 +273,7 @@ Un script appelle les 5 outils composites pour vérifier qu’ils répondent cor
 # 1. Démarrer le serveur (dans un premier terminal)
 npm run start:http
 
-# 2. Dans un second terminal (le .env doit contenir SPENDESK_API_TOKEN, ou utilise X_CLIENT_TOKEN)
+# 2. Dans un second terminal (le .env doit contenir SPENDESK_API_TOKEN)
 node scripts/test-composite-tools.mjs
 ```
 
@@ -445,7 +371,7 @@ Si Dust ou Claude répond que **l’API Payables retourne 404** ou que **Settlem
 
 - **500 Internal Server Error**  
   Erreur **côté serveur Spendesk** (pas dans le MCP). Le serveur API a planté ou refuse la requête pour une raison interne. À faire :
-  1. **Vérifier le token** : `SPENDESK_API_TOKEN` ou la clé enregistrée via `/ui` doit être valide et avoir les scopes nécessaires (ex. accès Purchase Orders si tu appelles les POs).
+  1. **Vérifier le token** : `SPENDESK_API_TOKEN` (ou le token fourni par le client via Bearer/client_credentials) doit être valide et avoir les scopes nécessaires (ex. accès Purchase Orders si tu appelles les POs).
   2. **Vérifier l’environnement** : en démo (`SPENDESK_USE_DEMO=true`), l’API démo peut ne pas supporter tous les endpoints (ex. purchase-orders).
   3. **Réessayer plus tard** : un 500 peut être temporaire (incident Spendesk). Réessayer après quelques minutes.
   4. **Regarder le détail** : depuis la dernière version, le message d’erreur inclut un extrait du corps de réponse de l’API (`Body: ...`) — cela peut indiquer la cause (ex. « feature not enabled », « invalid filter »).

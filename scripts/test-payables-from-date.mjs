@@ -3,11 +3,12 @@
  * Teste la récupération des payables depuis une date (défaut: 1er janvier 2026).
  * Usage: node scripts/test-payables-from-date.mjs
  *        FROM_DATE=2026-01-01 node scripts/test-payables-from-date.mjs
- *        MCP_BASE_URL=https://... X_CLIENT_TOKEN=<apiKey> node scripts/test-payables-from-date.mjs
+ *        MCP_BASE_URL=https://... SPENDESK_API_TOKEN=<token> node scripts/test-payables-from-date.mjs
  */
 const FROM_DATE = process.env.FROM_DATE || "2026-01-01";
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
+const SPENDESK_API_TOKEN = process.env.SPENDESK_API_TOKEN?.trim();
 
 function getHeaders(sessionId, protocolVersion) {
   const h = {
@@ -16,8 +17,7 @@ function getHeaders(sessionId, protocolVersion) {
   };
   if (sessionId) h["mcp-session-id"] = sessionId;
   if (protocolVersion) h["mcp-protocol-version"] = protocolVersion;
-  if (process.env.X_CLIENT_TOKEN) h["X-Client-Token"] = process.env.X_CLIENT_TOKEN;
-  if (process.env.X_COMPANY_ID) h["X-Company-Id"] = process.env.X_COMPANY_ID;
+  if (SPENDESK_API_TOKEN) h["Authorization"] = `Bearer ${SPENDESK_API_TOKEN}`;
   return h;
 }
 

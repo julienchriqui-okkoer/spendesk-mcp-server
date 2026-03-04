@@ -8,8 +8,6 @@ import type { ClientCredentials } from "../middleware/auth.js";
 export interface SessionInfo {
   transport: StreamableHTTPServerTransport;
   clientToken?: string;
-  clientApiKey?: string;
-  companyId?: string;
   /** When set, use client_credentials auth for this session (from Dust/Claude at connection time). */
   clientCredentials?: ClientCredentials;
   createdAt: number;
@@ -34,15 +32,11 @@ export class SessionStore {
     sessionId: string,
     transport: StreamableHTTPServerTransport,
     clientToken?: string,
-    clientApiKey?: string,
-    companyId?: string,
     clientCredentials?: ClientCredentials
   ): void {
     this.sessions.set(sessionId, {
       transport,
       clientToken,
-      clientApiKey,
-      companyId,
       clientCredentials,
       createdAt: Date.now(),
     });

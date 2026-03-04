@@ -7,13 +7,13 @@
 const Q1_2026 = { from: "2026-01-01", to: "2026-03-31" };
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
-const X_CLIENT_TOKEN = process.env.X_CLIENT_TOKEN?.trim();
+const SPENDESK_API_TOKEN = process.env.SPENDESK_API_TOKEN?.trim();
 
 function getHeaders(sessionId, protocolVersion) {
   const h = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
   if (sessionId) h["mcp-session-id"] = sessionId;
   if (protocolVersion) h["mcp-protocol-version"] = protocolVersion;
-  if (X_CLIENT_TOKEN) h["x-client-token"] = X_CLIENT_TOKEN;
+  if (SPENDESK_API_TOKEN) h["Authorization"] = `Bearer ${SPENDESK_API_TOKEN}`;
   return h;
 }
 

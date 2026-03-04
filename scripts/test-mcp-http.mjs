@@ -6,16 +6,12 @@
  * Usage:
  *   node scripts/test-mcp-http.mjs
  *   MCP_BASE_URL=https://your-app.up.railway.app node scripts/test-mcp-http.mjs
- *   # Multi-tenant / multi-company (clé récupérée après enregistrement sur /ui)
- *   X_CLIENT_TOKEN=<votre-clé-api> node scripts/test-mcp-http.mjs
- *   X_CLIENT_TOKEN=<clé-api> X_COMPANY_ID=spendesk-uk node scripts/test-mcp-http.mjs
  *
  * Default MCP_BASE_URL: http://localhost:3000
  */
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
-const X_CLIENT_TOKEN = process.env.X_CLIENT_TOKEN?.trim();
-const X_COMPANY_ID = process.env.X_COMPANY_ID?.trim();
+const SPENDESK_API_TOKEN = process.env.SPENDESK_API_TOKEN?.trim();
 
 /** Parse first JSON-RPC result from SSE stream (data: {...} lines). */
 async function parseSSEJson(body) {
@@ -51,15 +47,13 @@ const headers = (sessionId, protocolVersion) => {
   };
   if (sessionId) h["mcp-session-id"] = sessionId;
   if (protocolVersion) h["mcp-protocol-version"] = protocolVersion;
-  if (X_CLIENT_TOKEN) h["x-client-token"] = X_CLIENT_TOKEN;
-  if (X_COMPANY_ID) h["x-company-id"] = X_COMPANY_ID;
+  if (SPENDESK_API_TOKEN) h["Authorization"] = `Bearer ${SPENDESK_API_TOKEN}`;
   return h;
 };
 
 async function main() {
   console.log("Testing MCP at", BASE);
-  if (X_CLIENT_TOKEN) console.log("  X-Client-Token:", X_CLIENT_TOKEN.slice(0, 8) + "...");
-  if (X_COMPANY_ID) console.log("  X-Company-Id:", X_COMPANY_ID);
+  if (SPENDESK_API_TOKEN) console.log("  Auth: Bearer SPENDESK_API_TOKEN (", SPENDESK_API_TOKEN.slice(0, 8) + "... )");
   console.log("");
 
   // 1) GET / — info (and check server is reachable)

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Appel simple : spendesk_load_purchase_orders sans filtre.
- * Usage: npm run start:http (dans un terminal), puis:
- *   node scripts/test-load-po-no-filter.mjs
+ * Test: spendesk_get_purchase_orders avec perPage 10, affiche les 10 POs.
+ * Usage: npm run start:http puis node scripts/test-get-purchase-orders.mjs
  */
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
@@ -34,7 +33,7 @@ async function parseBody(res) {
 }
 
 async function main() {
-  console.log("Appel simple: spendesk_load_purchase_orders({}) — sans filtre\n");
+  console.log("Test: spendesk_get_purchase_orders({ perPage: 10 })\n");
   console.log("MCP URL:", MCP_URL);
 
   const r1 = await fetch(MCP_URL, {
@@ -47,7 +46,7 @@ async function main() {
       params: {
         protocolVersion: "2024-11-05",
         capabilities: {},
-        clientInfo: { name: "test-load-po-no-filter", version: "1.0.0" },
+        clientInfo: { name: "test-get-po", version: "1.0.0" },
       },
     }),
   });
@@ -71,7 +70,7 @@ async function main() {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
-      params: { name: "spendesk_load_purchase_orders", arguments: {} },
+      params: { name: "spendesk_get_purchase_orders", arguments: { perPage: 10 } },
     }),
   });
   const out = await parseBody(res);
@@ -85,39 +84,22 @@ async function main() {
     console.error("Erreur API:", data.error);
     process.exit(1);
   }
-  console.log("\nRésultat:");
-  console.log("  loaded:", data.loaded);
-  console.log("  message:", data.message);
-  console.log("  columns:", data.columns?.join(", "));
 
-  if (data.loaded > 0) {
-    const queryRes = await fetch(MCP_URL, {
-      method: "POST",
-      headers: headers(sessionId, protocolVersion),
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 3,
-        method: "tools/call",
-        params: { name: "spendesk_query_purchase_orders", arguments: { sql: "SELECT * FROM ? LIMIT 5" } },
-      }),
-    });
-    const queryOut = await parseBody(queryRes);
-    const queryText = queryOut?.result?.content?.[0]?.text;
-    if (queryText) {
-      const queryData = JSON.parse(queryText);
-      const rows = queryData?.rows ?? [];
-      console.log("\nContenu (5 premiers POs):");
-      if (rows.length === 0) {
-        console.log("  (aucune ligne)");
-      } else {
-        rows.forEach((row, i) => {
-          console.log(`  --- PO ${i + 1} ---`);
-          Object.entries(row).forEach(([k, v]) => console.log(`    ${k}: ${v ?? "(null)"}`));
-        });
-      }
-    }
-  }
-  console.log("\n✓ OK");
+  const list = data.purchaseOrders ?? data.data ?? (Array.isArray(data) ? data : []);
+  const items = Array.isArray(list) ? list : [];
+  const meta = data.meta ?? data.pagination;
+
+  const toShow = items.slice(0, 10);
+  console.log("\nRésultat:");
+  console.log("  Reçus:", items.length, "| Affichés: 10 premiers");
+  if (meta) console.log("  Meta:", JSON.stringify(meta, null, 2));
+  console.log("\n--- 10 POs ---\n");
+  toShow.forEach((po, i) => {
+    const p = po && typeof po === "object" ? po : {};
+    console.log(`PO ${i + 1}:`, JSON.stringify(p, null, 2).slice(0, 500) + (JSON.stringify(p).length > 500 ? "..." : ""));
+    console.log("");
+  });
+  console.log("✓ OK");
 }
 
 main().catch((e) => {

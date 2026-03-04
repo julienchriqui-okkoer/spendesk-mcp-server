@@ -96,7 +96,7 @@ function buildApi(clientToken?: string, clientCredentials?: ClientCredentials): 
   const hasEnvCredentials = getClientId() && getClientSecret();
   if (!apiToken && !getRefreshToken() && !hasEnvCredentials) {
     throw new Error(
-      "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, X-Client-Token (API key), or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET / SPENDESK_API_TOKEN in env."
+      "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET / SPENDESK_API_TOKEN in env."
     );
   }
 
@@ -327,7 +327,7 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (transport) {
-            sessionStore.set(id, transport, clientToken, req.clientApiKey, req.companyId, clientCredentials);
+            sessionStore.set(id, transport, clientToken, clientCredentials);
           }
         },
       });
@@ -358,22 +358,18 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
     try {
       const durationMs = Date.now() - start;
       const authHeader = req.headers.authorization;
-      const xClientToken = req.headers["x-client-token"] as string | undefined;
-      const companyKey = (req.headers["x-company-id"] as string | undefined) ?? req.companyId ?? undefined;
-      const clientIdentifier =
-        xClientToken ||
-        (authHeader && authHeader.toLowerCase().startsWith("bearer ")
+      const bearer =
+        authHeader && authHeader.toLowerCase().startsWith("bearer ")
           ? authHeader.slice(7).trim()
-          : undefined) ||
-        req.clientApiKey;
+          : undefined;
 
       logHttpRequestUsage({
         method: req.method,
         path: req.path,
         statusCode: res.statusCode,
         durationMs,
-        clientIdentifier,
-        companyKey: companyKey ?? null,
+          clientIdentifier: bearer ?? null,
+          companyKey: null,
         sessionId: (req.headers["mcp-session-id"] as string | undefined) ?? null,
       });
     } catch (logErr) {
@@ -437,16 +433,10 @@ const server = app.listen(PORT, HOST, () => {
   console.log("  GET  /usage — MCP usage dashboard");
   
   // Log environment status
-  if (process.env.ENCRYPTION_KEY) {
-    console.log("✓ ENCRYPTION_KEY configured");
-  } else {
-    console.warn("⚠ ENCRYPTION_KEY not set - multi-tenant mode will not work");
-  }
-  
   if (process.env.SPENDESK_API_TOKEN) {
     console.log("✓ SPENDESK_API_TOKEN configured (fallback mode)");
   } else {
-    console.warn("⚠ SPENDESK_API_TOKEN not set - clients must provide credentials (Bearer or X-Client-Token)");
+    console.warn("⚠ SPENDESK_API_TOKEN not set - clients must provide credentials via client_credentials or direct Bearer token");
   }
   
 });
