@@ -228,6 +228,12 @@ export const API_REFERENCE = {
       ],
     },
     {
+      method: "MCP",
+      path: "(filter discovery)",
+      mcpTool: "spendesk_get_filter_options",
+      description: "Returns all valid filter values (payableType, bookkeepingStatus, settlementState, counterpartyType, sortOrder, groupBy, paymentStatus). Call when a filter returns 0 results or to discover allowed values before calling analyze_spend, get_settlements, or get_bookkeeping_pipeline.",
+    },
+    {
       method: "GET",
       path: "/v1/cost-centers",
       mcpTool: "spendesk_get_cost_centers",

@@ -167,6 +167,7 @@ export const TOOL_CATEGORY: Record<string, UsageCategory> = {
   spendesk_get_accruals: "bookkeeping",
   spendesk_get_purchase_orders: "purchase_orders",
   spendesk_get_purchase_orders_and_payables_export: "purchase_orders",
+  spendesk_get_filter_options: "reference_data",
   // Fallback categories for other tools can be added over time.
 };
 

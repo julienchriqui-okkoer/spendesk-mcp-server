@@ -43,8 +43,13 @@ const listSchema = {
 // Specific schema for settlements with dedicated parameters
 const settlementsSchema = {
   ...paginationSchema,
-  type: z.string().optional().describe("Filter settlements by type"),
-  state: z.string().optional().describe("Filter settlements by state"),
+  type: z.string().optional().describe("Filter settlements by type."),
+  state: z
+    .string()
+    .optional()
+    .describe(
+      "Filter settlements by state. Valid values: 'processing', 'completed', 'failed', 'pending'."
+    ),
   paidFrom: z
     .string()
     .optional()
@@ -64,7 +69,9 @@ const payablesSnapshotSchema = {
   bookkeepingStatus: z
     .array(z.string())
     .optional()
-    .describe("Filter payables by bookkeeping status(es)."),
+    .describe(
+      "Filter payables by bookkeeping status(es). Valid values: 'created', 'prepared', 'exported'."
+    ),
   exportedAfter: z
     .string()
     .optional()
@@ -82,7 +89,7 @@ const payablesSnapshotSchema = {
     .enum(["asc", "desc"])
     .optional()
     .default("desc")
-    .describe("Sort order (default: desc)."),
+    .describe("Sort order (default: 'desc'). Valid values: 'asc', 'desc'."),
   fromPayableDate: dateYMD.optional().describe("Period start date (YYYY-MM-DD). Requires toPayableDate; max 31 days range."),
   toPayableDate: dateYMD.optional().describe("Period end date (YYYY-MM-DD). Required when fromPayableDate is set."),
   createdFrom: dateYMD.optional().describe("Period start for creation date (YYYY-MM-DD)."),
@@ -607,7 +614,40 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           asOfDate: String(args.asOfDate),
           prorateByServicePeriod: args.prorateByServicePeriod as boolean | undefined,
         });
-
+        break;
+      case "spendesk_get_filter_options":
+        result = {
+          payableType: [
+            "invoicePurchase",
+            "subscriptionCard",
+            "singlePurchaseCard",
+            "physicalCard",
+            "multiUseCard",
+            "expenseClaim",
+            "mileageAllowance",
+            "perDiem",
+          ],
+          bookkeepingStatus: ["created", "prepared", "exported"],
+          settlementState: ["processing", "completed", "failed", "pending"],
+          counterpartyType: ["supplier", "employee"],
+          sortOrder: ["asc", "desc"],
+          groupBy: [
+            "supplier",
+            "costCenter",
+            "analyticalField",
+            "payableType",
+            "expenseAccount",
+            "employee",
+            "currency",
+            "bookkeepingStatus",
+            "month",
+            "paymentStatus",
+            "country",
+          ],
+          paymentStatus: ["paid", "unpaid", "partial"],
+          tips: "Use these values when calling spendesk_analyze_spend, spendesk_get_settlements, spendesk_get_bookkeeping_pipeline, or spendesk_get_payment_status. If a filter returns 0 results, verify the value is in this list and try discovery tools (e.g. spendesk_get_cost_centers, spendesk_get_suppliers) for exact names.",
+        };
+        break;
       case "spendesk_get_api_reference": {
         const mcpTool = args.mcpTool as string | undefined;
         const path = args.path as string | undefined;
@@ -689,7 +729,11 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_settlements", () =>
     mcp.tool(
       "spendesk_get_settlements",
-      "Get full settlements list (all pages). Uses API pageSize for pagination like composite tools. Params: type, state, paidFrom, clearedFrom, clearedTo, exportedAfter, ids, and 'filters' (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For financial analysis prefer spendesk_analyze_spend.",
+      [
+        "Get full settlements list (all pages). Params: type, state (valid: 'processing', 'completed', 'failed', 'pending'), paidFrom, clearedFrom, clearedTo, exportedAfter, ids, and 'filters' (camelCase).",
+        "Returns { data: [...], meta: { pagination: { total, pageSize } } }. For financial analysis prefer spendesk_analyze_spend.",
+        "IMPORTANT - When 0 results with a state filter: call spendesk_get_filter_options to confirm valid state values, then try without the state filter to inspect a sample and verify data exists for the period.",
+      ].join(" "),
       settlementsSchema,
       async (args) => toContent(await run("spendesk_get_settlements", args))
     )
@@ -810,9 +854,21 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       costCenterIds: z.array(z.string()).optional(),
       supplier: z.string().optional(),
       supplierId: z.string().optional(),
-      payableType: z.string().optional(),
-      counterpartyType: z.enum(["supplier", "employee"]).optional(),
-      bookkeepingStatus: z.enum(["created", "prepared", "exported"]).optional(),
+      payableType: z
+        .string()
+        .optional()
+        .describe(
+          "Filter by payable type. Valid values: 'invoicePurchase', 'subscriptionCard', 'singlePurchaseCard', " +
+            "'physicalCard', 'multiUseCard', 'expenseClaim', 'mileageAllowance', 'perDiem'."
+        ),
+      counterpartyType: z
+        .enum(["supplier", "employee"])
+        .optional()
+        .describe("Filter by counterparty type. Valid values: 'supplier', 'employee'."),
+      bookkeepingStatus: z
+        .enum(["created", "prepared", "exported"])
+        .optional()
+        .describe("Filter by bookkeeping status. Valid values: 'created', 'prepared', 'exported'."),
       currency: z.string().optional(),
       minAmount: z.number().optional(),
       maxAmount: z.number().optional(),
@@ -821,45 +877,80 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       analyticalFieldValue: z.string().optional(),
     })
     .optional();
+  const analyzeSpendDescription = [
+    "Analyze and aggregate spending from Spendesk payables over a time period.",
+    "Supports filters: costCenter, supplier, supplierId, payableType, counterpartyType (supplier|employee),",
+    "bookkeepingStatus, currency, minAmount, maxAmount, expenseAccount, analyticalFieldName+analyticalFieldValue.",
+    "groupBy options: supplier | costCenter | analyticalField | payableType | expenseAccount | employee | currency |",
+    "bookkeepingStatus | month | paymentStatus | country.",
+    "",
+    "Examples:",
+    "- Subscription card spend by supplier (Jan 2026): groupBy: \"supplier\", filters: { payableType: \"subscriptionCard\" }, from: \"2026-01-01\", to: \"2026-01-31\"",
+    "- Top 10 suppliers for a cost center: groupBy: \"supplier\", filters: { costCenter: \"Engineering\" }",
+    "- Monthly spend trend: groupBy: \"month\"",
+    "- Spend not yet exported to accounting: groupBy: \"supplier\", filters: { bookkeepingStatus: \"created\" }",
+    "- Employee expense claims: groupBy: \"employee\", filters: { counterpartyType: \"employee\" }",
+    "- USD-denominated spend: groupBy: \"currency\", filters: { currency: \"USD\" }",
+    "",
+    "IMPORTANT - When results are empty or unexpected:",
+    "1. If 0 results with a payableType filter → call spendesk_get_filter_options to get valid values, then retry.",
+    "2. If 0 results with a costCenter filter → call spendesk_get_cost_centers to list exact cost center names (case-sensitive), then retry.",
+    "3. If 0 results with a supplier filter → call spendesk_get_suppliers to find the exact supplier name, then retry.",
+    "4. Never give up after a single 0-result response — always attempt discovery first.",
+    "",
+    "Use includeDetails: true for up to 10 payables per group."
+  ].join(" ");
+
   maybeReg("spendesk_analyze_spend", () =>
     mcp.tool(
       "spendesk_analyze_spend",
-      "Analyze and aggregate spending from Spendesk payables over a time period. Supports filtering via filters: costCenter, supplier, supplierId, payableType, counterpartyType (supplier|employee), bookkeepingStatus, currency, minAmount, maxAmount, expenseAccount, analyticalFieldName+analyticalFieldValue. groupBy: supplier | costCenter | analyticalField | payableType | expenseAccount | employee | currency | bookkeepingStatus | month | paymentStatus | country. Examples: top suppliers for Strat Ops → groupBy: supplier, filters: { costCenter: \"Strat Ops\" }; cost centers using AWS → groupBy: costCenter, filters: { supplier: \"AWS\" }; top employees by expenses → groupBy: employee; spend by month → groupBy: month; USD spend → groupBy: currency, filters: { currency: \"USD\" }; not yet in accounting → filters: { bookkeepingStatus: \"created\" }. Use includeDetails: true for up to 10 payables per group.",
-    {
-      from: z.string().describe("Start date ISO 8601 e.g. 2026-01-01"),
-      to: z.string().describe("End date ISO 8601 e.g. 2026-03-31"),
-      groupBy: z
-        .enum([
-          "supplier",
-          "costCenter",
-          "analyticalField",
-          "payableType",
-          "expenseAccount",
-          "employee",
-          "currency",
-          "bookkeepingStatus",
-          "month",
-          "paymentStatus",
-          "country",
-        ])
-        .describe("Group results by this dimension"),
-      analyticalFieldName: z.string().optional().describe("Required when groupBy is analyticalField"),
-      limit: z.number().int().min(1).max(100).optional().default(10).describe("Number of results to return"),
-      excludeCredits: z.boolean().optional().default(true).describe("Exclude refunds and credit notes"),
-      filters: analyzeSpendFiltersSchema.describe("Optional filters applied before aggregation (AND logic)"),
-      includeDetails: z.boolean().optional().default(false).describe("Include up to 10 payables per group in results"),
-    },
+      analyzeSpendDescription,
+      {
+        from: z.string().describe("Start date ISO 8601 e.g. 2026-01-01"),
+        to: z.string().describe("End date ISO 8601 e.g. 2026-03-31"),
+        groupBy: z
+          .enum([
+            "supplier",
+            "costCenter",
+            "analyticalField",
+            "payableType",
+            "expenseAccount",
+            "employee",
+            "currency",
+            "bookkeepingStatus",
+            "month",
+            "paymentStatus",
+            "country",
+          ])
+          .describe("Group results by this dimension"),
+        analyticalFieldName: z.string().optional().describe("Required when groupBy is analyticalField"),
+        limit: z.number().int().min(1).max(100).optional().default(10).describe("Number of results to return"),
+        excludeCredits: z.boolean().optional().default(true).describe("Exclude refunds and credit notes"),
+        filters: analyzeSpendFiltersSchema.describe(
+          "Optional filters applied before aggregation (AND logic). Call spendesk_get_filter_options for valid enum values."
+        ),
+        includeDetails: z.boolean().optional().default(false).describe("Include up to 10 payables per group in results"),
+      },
       async (args) => toContent(await run("spendesk_analyze_spend", args))
     )
   );
   maybeReg("spendesk_get_bookkeeping_pipeline", () =>
     mcp.tool(
       "spendesk_get_bookkeeping_pipeline",
-    "Use this to track the accounting/bookkeeping pipeline in Spendesk. Returns payables filtered by bookkeeping status. Use for: which invoices are not yet exported to accounting?, show me the VAT breakdown by rate, generate a journal entry list, what is pending for month-end close?",
-    {
+      [
+        "Use this to track the accounting/bookkeeping pipeline in Spendesk. Returns payables filtered by bookkeeping status (valid: 'created', 'prepared', 'exported').",
+        "Use for: which invoices are not yet exported to accounting?, show me the VAT breakdown by rate, generate a journal entry list, what is pending for month-end close?",
+        "IMPORTANT - To see valid status values call spendesk_get_filter_options. To understand the distribution of payables by bookkeeping status, use spendesk_analyze_spend with groupBy: 'bookkeepingStatus'.",
+      ].join(" "),
+      {
       from: z.string().describe("Start date ISO 8601"),
       to: z.string().describe("End date ISO 8601"),
-      status: z.enum(["created", "prepared", "exported"]).optional().describe("Filter by status; if omitted returns all"),
+      status: z
+        .enum(["created", "prepared", "exported"])
+        .optional()
+        .describe(
+          "Filter by bookkeeping status; if omitted returns all. Valid values: 'created', 'prepared', 'exported'."
+        ),
       includeVatBreakdown: z.boolean().optional().default(false),
       includeJournalEntries: z.boolean().optional().default(false),
     },
@@ -873,7 +964,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     {
       from: z.string().describe("Start date ISO 8601"),
       to: z.string().describe("End date ISO 8601"),
-      status: z.enum(["paid", "unpaid", "partial"]).optional().describe("Filter by status"),
+      status: z
+        .enum(["paid", "unpaid", "partial"])
+        .optional()
+        .describe(
+          "Filter by payment status. Valid values: 'paid', 'unpaid', 'partial'."
+        ),
       currency: z.string().optional().describe("Filter by original currency e.g. USD, GBP"),
     },
       async (args) => toContent(await run("spendesk_get_payment_status", args))
@@ -957,6 +1053,14 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       ...listSchema,
     },
       async (args) => toContent(await run("spendesk_get_analytical_values", args))
+    )
+  );
+  maybeReg("spendesk_get_filter_options", () =>
+    mcp.tool(
+      "spendesk_get_filter_options",
+      "Returns all valid filter values for Spendesk MCP tools (payableType, bookkeepingStatus, settlementState, counterpartyType, sortOrder, groupBy, paymentStatus). Call this when a filter returns 0 results to verify allowed values, or to discover which filters are available before calling spendesk_analyze_spend, spendesk_get_settlements, or spendesk_get_bookkeeping_pipeline.",
+      {},
+      async () => toContent(await run("spendesk_get_filter_options", {}))
     )
   );
   maybeReg("spendesk_get_cost_centers", () =>
