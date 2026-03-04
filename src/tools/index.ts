@@ -20,6 +20,13 @@ import {
   getAccruals,
 } from "../lib/composite-tools.js";
 import { getApiReference } from "../lib/api-reference.js";
+import {
+  loadDataset,
+  executeQuery,
+  listLoadedTables,
+  clearTables,
+  type LoadDataset,
+} from "../lib/ephemeral-sqlite.js";
 import { fetchAllPages } from "../lib/fetch-all-pages.js";
 import { isToolEnabled } from "../lib/tools-config.js";
 import { logToolCallUsage, TOOL_CATEGORY } from "../lib/usage-logger.js";
@@ -648,6 +655,26 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           tips: "Use these values when calling spendesk_analyze_spend, spendesk_get_settlements, spendesk_get_bookkeeping_pipeline, or spendesk_get_payment_status. If a filter returns 0 results, verify the value is in this list and try discovery tools (e.g. spendesk_get_cost_centers, spendesk_get_suppliers) for exact names.",
         };
         break;
+      case "spendesk_load_sqlite_data": {
+        const dataset = args.dataset as LoadDataset;
+        const fromDate = args.from_date as string | undefined;
+        const toDate = args.to_date as string | undefined;
+        result = await loadDataset(api, dataset, fromDate, toDate);
+        break;
+      }
+      case "spendesk_execute_sql_query": {
+        const sql = String(args.sql ?? "").trim();
+        result = executeQuery(api, sql);
+        break;
+      }
+      case "spendesk_list_loaded_tables":
+        result = listLoadedTables(api);
+        break;
+      case "spendesk_clear_sqlite_tables": {
+        const tableNames = args.table_names as string[] | undefined;
+        result = clearTables(api, tableNames);
+        break;
+      }
       case "spendesk_get_api_reference": {
         const mcpTool = args.mcpTool as string | undefined;
         const path = args.path as string | undefined;
@@ -1063,6 +1090,74 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       async () => toContent(await run("spendesk_get_filter_options", {}))
     )
   );
+
+  // —— Ephemeral SQLite Analytics (Ramp-style) —————————————————————————————————
+  const loadSqliteDataDesc = [
+    "Use this tool when you need to run SQL analytics on Spendesk data (e.g. top suppliers by spend, spend by cost center, overdue invoices).",
+    "Do NOT use when you only need a simple list — prefer spendesk_get_settlements or spendesk_analyze_spend for that.",
+    "Parameters: dataset (required): 'payables' | 'settlements' | 'suppliers' | 'purchase_orders'. from_date (optional): ISO date YYYY-MM-DD. to_date (optional): ISO date YYYY-MM-DD. Payables require both dates; settlements and purchase_orders use them for cleared/created range.",
+    "Example: spendesk_load_sqlite_data(dataset='payables', from_date='2026-01-01', to_date='2026-03-31') → loads Q1 2026 payables. Then use spendesk_execute_sql_query to analyze.",
+    "Fallback: if row count is 0, verify the date range and call spendesk_list_loaded_tables to confirm the table exists.",
+  ].join(" ");
+  maybeReg("spendesk_load_sqlite_data", () =>
+    mcp.tool(
+      "spendesk_load_sqlite_data",
+      loadSqliteDataDesc,
+      {
+        dataset: z
+          .enum(["payables", "settlements", "suppliers", "purchase_orders"])
+          .describe("Dataset to load. Valid values: 'payables', 'settlements', 'suppliers', 'purchase_orders'."),
+        from_date: z.string().optional().describe("Start date ISO 8601 (YYYY-MM-DD). Required for payables; optional for settlements and purchase_orders."),
+        to_date: z.string().optional().describe("End date ISO 8601 (YYYY-MM-DD). Required for payables; optional for settlements and purchase_orders."),
+      },
+      async (args) => toContent(await run("spendesk_load_sqlite_data", args))
+    )
+  );
+  const executeSqlDesc = [
+    "Use this tool when you have already loaded data with spendesk_load_sqlite_data and want to run analytical SQL (aggregations, filters, joins).",
+    "Do NOT use for INSERT, UPDATE, DELETE, or DROP — only SELECT and WITH (CTE) are allowed. Results are capped at 1000 rows.",
+    "Parameters: sql (required): read-only SQL string.",
+    "Example: spendesk_execute_sql_query(sql=\"SELECT supplier_name, SUM(amount_eur) as total FROM payables GROUP BY supplier_name ORDER BY total DESC LIMIT 10\").",
+    "Fallback: if the query fails, check table and column names with spendesk_list_loaded_tables.",
+  ].join(" ");
+  maybeReg("spendesk_execute_sql_query", () =>
+    mcp.tool(
+      "spendesk_execute_sql_query",
+      executeSqlDesc,
+      {
+        sql: z.string().describe("Read-only SQL query (SELECT or WITH only)."),
+      },
+      async (args) => toContent(await run("spendesk_execute_sql_query", args))
+    )
+  );
+  maybeReg("spendesk_list_loaded_tables", () =>
+    mcp.tool(
+      "spendesk_list_loaded_tables",
+      [
+        "Use this tool to see which tables are currently loaded in the ephemeral SQLite DB and their schema (columns + types) and row count.",
+        "Call after spendesk_load_sqlite_data to confirm data, or before spendesk_execute_sql_query to know available tables and column names.",
+        "No parameters. Returns all loaded tables with columns and row count.",
+        "Fallback: if no tables, call spendesk_load_sqlite_data first.",
+      ].join(" "),
+      {},
+      async () => toContent(await run("spendesk_list_loaded_tables", {}))
+    )
+  );
+  maybeReg("spendesk_clear_sqlite_tables", () =>
+    mcp.tool(
+      "spendesk_clear_sqlite_tables",
+      [
+        "Use this tool when analysis is complete and you want to free memory by dropping loaded tables.",
+        "Parameters: table_names (optional): list of table names to drop. If empty or omitted, clears all tables.",
+        "Example: spendesk_clear_sqlite_tables(table_names=['payables']) or spendesk_clear_sqlite_tables() to clear all.",
+      ].join(" "),
+      {
+        table_names: z.array(z.string()).optional().describe("Table names to drop. If empty or omitted, all tables are dropped."),
+      },
+      async (args) => toContent(await run("spendesk_clear_sqlite_tables", args))
+    )
+  );
+
   maybeReg("spendesk_get_cost_centers", () =>
     mcp.tool(
       "spendesk_get_cost_centers",

@@ -168,6 +168,10 @@ export const TOOL_CATEGORY: Record<string, UsageCategory> = {
   spendesk_get_purchase_orders: "purchase_orders",
   spendesk_get_purchase_orders_and_payables_export: "purchase_orders",
   spendesk_get_filter_options: "reference_data",
+  spendesk_load_sqlite_data: "reference_data",
+  spendesk_execute_sql_query: "reference_data",
+  spendesk_list_loaded_tables: "reference_data",
+  spendesk_clear_sqlite_tables: "reference_data",
   // Fallback categories for other tools can be added over time.
 };
 

@@ -285,6 +285,71 @@ Pour tester les payables snapshot et la pagination :
 FROM_DATE=2026-02-26 node scripts/test-payables-from-date.mjs
 ```
 
+### Ephemeral SQLite Analytics (pattern type Ramp)
+
+Au lieu de renvoyer de gros JSON au LLM, vous pouvez charger les données Spendesk dans une **base SQLite en mémoire** par session, puis laisser le LLM exécuter des requêtes SQL en lecture seule. Utile pour des analyses croisées, agrégations et rapports comptables.
+
+**Workflow recommandé pour le LLM :**
+
+1. Appeler **`spendesk_load_sqlite_data`** avec le jeu de données (`payables`, `settlements`, `suppliers`, `purchase_orders`) et, pour les payables, la plage de dates (`from_date`, `to_date`).
+2. Appeler **`spendesk_list_loaded_tables`** pour confirmer le schéma et le nombre de lignes.
+3. Appeler **`spendesk_execute_sql_query`** avec des requêtes SQL analytiques (SELECT / WITH uniquement ; résultats plafonnés à 1000 lignes).
+4. Appeler **`spendesk_clear_sqlite_tables`** en fin d’analyse pour libérer la mémoire.
+
+**Outils disponibles :**
+
+| Outil | Rôle |
+|-------|------|
+| `spendesk_load_sqlite_data` | Charge un jeu (payables, settlements, suppliers, purchase_orders) dans une table SQLite en mémoire. Paramètres : `dataset`, `from_date` (optionnel), `to_date` (optionnel). |
+| `spendesk_execute_sql_query` | Exécute une requête SQL en lecture seule (SELECT ou WITH). Paramètre : `sql`. |
+| `spendesk_list_loaded_tables` | Liste les tables chargées avec colonnes, types et nombre de lignes. |
+| `spendesk_clear_sqlite_tables` | Supprime des tables (`table_names`) ou toutes si la liste est vide. |
+
+**Sécurité :** seules les requêtes commençant par `SELECT` ou `WITH` sont acceptées ; les mots-clés `INSERT`, `UPDATE`, `DELETE`, `DROP`, `CREATE`, `ALTER` sont refusés.
+
+**Exemples de requêtes SQL (après chargement des payables ou autres tables) :**
+
+```sql
+-- 1. Top 10 fournisseurs par montant (EUR)
+SELECT supplier_name, SUM(amount_eur) AS total_eur, COUNT(*) AS nb
+FROM payables GROUP BY supplier_name ORDER BY total_eur DESC LIMIT 10;
+
+-- 2. Dépenses par centre de coût
+SELECT cost_center, SUM(amount_eur) AS total_eur FROM payables
+WHERE cost_center IS NOT NULL AND cost_center != '' GROUP BY cost_center ORDER BY total_eur DESC;
+
+-- 3. Factures non payées (unpaid)
+SELECT id, supplier_name, amount_eur, payable_date, due_date FROM payables
+WHERE payment_status = 'unpaid' ORDER BY due_date;
+
+-- 4. Répartition par type de payable (invoice, card, expense…)
+SELECT payable_type, COUNT(*) AS nb, SUM(amount_eur) AS total_eur
+FROM payables GROUP BY payable_type ORDER BY total_eur DESC;
+
+-- 5. Tendance mensuelle (montant par mois)
+SELECT strftime('%Y-%m', payable_date) AS month, SUM(amount_eur) AS total_eur, COUNT(*) AS nb
+FROM payables GROUP BY month ORDER BY month;
+
+-- 6. Payables non encore exportés en compta (bookkeeping_status = created)
+SELECT supplier_name, SUM(amount_eur) AS total_eur FROM payables
+WHERE bookkeeping_status = 'created' GROUP BY supplier_name ORDER BY total_eur DESC;
+
+-- 7. Montant par devise d’origine
+SELECT original_currency, SUM(amount_eur) AS total_eur, COUNT(*) AS nb
+FROM payables GROUP BY original_currency ORDER BY total_eur DESC;
+
+-- 8. Settlements : montant par état (processing, completed, failed, pending)
+SELECT state, COUNT(*) AS nb, SUM(amount_eur) AS total FROM settlements GROUP BY state;
+
+-- 9. Top fournisseurs sur les purchase orders
+SELECT supplier_name, COUNT(*) AS nb_po, SUM(total_amount) AS total FROM purchase_orders
+GROUP BY supplier_name ORDER BY total DESC LIMIT 10;
+
+-- 10. Jointure payables + type pour analyse détaillée
+SELECT payable_type, bookkeeping_status, COUNT(*) AS nb, SUM(amount_eur) AS total_eur
+FROM payables GROUP BY payable_type, bookkeeping_status ORDER BY total_eur DESC;
+```
+
 ## Outils (Tools)
 
 Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
@@ -318,6 +383,12 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 
 ### Purchase Orders
 - `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Commandes d'achat (avec filtres via `filters`)
+
+### Ephemeral SQLite (analyses SQL)
+- `spendesk_load_sqlite_data` – Charge un jeu (payables, settlements, suppliers, purchase_orders) dans une table SQLite en mémoire. Paramètres : `dataset`, `from_date`, `to_date` (obligatoires pour payables).
+- `spendesk_execute_sql_query` – Exécute une requête SQL en lecture seule (SELECT ou WITH). Paramètre : `sql`. Résultats limités à 1000 lignes.
+- `spendesk_list_loaded_tables` – Liste les tables chargées avec schéma (colonnes, types) et nombre de lignes.
+- `spendesk_clear_sqlite_tables` – Supprime des tables (`table_names`) ou toutes si vide.
 
 ### Découverte / Référence API
 - `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`) pour filtrer sur un seul endpoint.

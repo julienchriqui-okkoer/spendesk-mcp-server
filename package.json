@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "dev": "tsc --watch",
     "start:http": "node dist/server-http.js",
-    "test": "npm run build && node --test tests/fetch-all-payables.test.mjs",
+    "test": "npm run build && node --test tests/fetch-all-payables.test.mjs tests/ephemeral-sqlite.test.mjs",
     "test:load-query-po": "node scripts/test-load-query-purchase-orders.mjs",
     "docs:sync-tools": "node scripts/sync-docs-enabled-tools.mjs",
     "docs:dev": "npm run docs:sync-tools && cd spendesk-mcp-docs && npm run dev"
