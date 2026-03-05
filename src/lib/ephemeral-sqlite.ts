@@ -1,6 +1,6 @@
 /**
  * Ephemeral in-memory SQLite for Spendesk MCP (Ramp-style pattern).
- * Module-level singleton so the same connection is used across all tool calls (load → execute_sql → list_tables → clear).
+ * One DB per MCP session (when session id is set via request context) so sessions cannot read each other's data.
  */
 
 import Database from "better-sqlite3";
@@ -9,12 +9,45 @@ import { SpendeskPaths } from "../spendesk-api/endpoints.js";
 import { fetchAllPayables, type Payable } from "./fetch-all-payables.js";
 import { fetchAllPages } from "./fetch-all-pages.js";
 import { sanitizePurchaseOrder } from "./sanitize-purchase-order.js";
+import { getMcpSessionId } from "./request-context.js";
 
 const ALLOWED_SQL_PREFIXES = ["SELECT", "WITH"];
 const MAX_ROWS_RETURNED = 1000;
+const FORBIDDEN_KEYWORDS = [
+  "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "PRAGMA", "ATTACH", "DETACH",
+];
 
-/** Single in-memory DB shared by load_sqlite_data, execute_sql_query, list_loaded_tables, clear_tables. */
-const _db = new Database(":memory:");
+/** Per-session in-memory DBs; key is mcp-session-id or "_default" when no session context. */
+const sessionDbs = new Map<string, Database.Database>();
+
+function getSessionKey(): string {
+  const id = getMcpSessionId();
+  return id ?? "_default";
+}
+
+/** Get or create the DB for the current request session (or default). */
+function getSessionDb(): Database.Database {
+  const key = getSessionKey();
+  let db = sessionDbs.get(key);
+  if (!db) {
+    db = new Database(":memory:");
+    sessionDbs.set(key, db);
+  }
+  return db;
+}
+
+/** Close and remove a session's DB (call on DELETE /mcp or session cleanup). */
+export function closeSessionDb(sessionId: string): void {
+  const db = sessionDbs.get(sessionId);
+  if (db) {
+    try {
+      db.close();
+    } catch (err) {
+      console.error(`[ephemeral-sqlite] Error closing session DB ${sessionId}:`, err);
+    }
+    sessionDbs.delete(sessionId);
+  }
+}
 
 function getPaymentStatusKey(p: Payable): "paid" | "unpaid" | "partial" {
   const allocated = (p.allocations ?? []).reduce((sum, a) => sum + a.allocatedAmount, 0);
@@ -30,9 +63,9 @@ function expenseAccountDisplay(acc: { code?: string; name?: string } | null | un
   return name || code || "";
 }
 
-/** Return the module-level singleton DB (for tests that need direct access). */
+/** Return the DB for the current session (for tests: set request context or use _default). */
 export function getOrCreateDb(_api?: SpendeskClient): Database.Database {
-  return _db;
+  return getSessionDb();
 }
 
 export type LoadDataset = "payables" | "settlements" | "suppliers" | "purchase_orders";
@@ -202,16 +235,17 @@ export async function loadDataset(
   const from = fromDate ?? "";
   const to = toDate ?? "";
 
+  const db = getSessionDb();
   if (dataset === "payables") {
     if (!from || !to) throw new Error("Payables require from_date and to_date (ISO YYYY-MM-DD).");
     const payables = await fetchAllPayables(api, from, to);
-    _db.exec("DROP TABLE IF EXISTS payables;");
-    _db.exec(payablesTableSchema());
+    db.exec("DROP TABLE IF EXISTS payables;");
+    db.exec(payablesTableSchema());
     const cols = ["id", "supplier_name", "supplier_id", "amount_eur", "original_amount", "original_currency", "payable_type", "payable_date", "due_date", "bookkeeping_status", "payment_status", "cost_center", "cost_center_id", "counterparty_type", "employee_name", "expense_account", "description", "created_at", "updated_at"];
-    const ins = _db.prepare(
+    const ins = db.prepare(
       `INSERT INTO payables (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`
     );
-    const runMany = _db.transaction((rows: Record<string, string | number | null>[]) => {
+    const runMany = db.transaction((rows: Record<string, string | number | null>[]) => {
       for (const r of rows) {
         ins.run(...cols.map((c) => r[c] ?? null));
       }
@@ -230,13 +264,13 @@ export async function loadDataset(
     if (to) params.clearedTo = to;
     const { data } = await fetchAllPages(api, SpendeskPaths.getSettlements, params, { listKey: "settlements" });
     const list = Array.isArray(data) ? data : [];
-    _db.exec("DROP TABLE IF EXISTS settlements;");
-    _db.exec(settlementsTableSchema());
+    db.exec("DROP TABLE IF EXISTS settlements;");
+    db.exec(settlementsTableSchema());
     const cols = ["id", "type", "state", "amount", "currency", "amount_eur", "paid_at", "cleared_at", "counterparty_name", "description"];
-    const ins = _db.prepare(
+    const ins = db.prepare(
       `INSERT INTO settlements (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`
     );
-    const runMany = _db.transaction((rows: Record<string, string | number | null>[]) => {
+    const runMany = db.transaction((rows: Record<string, string | number | null>[]) => {
       for (const r of rows) {
         ins.run(...cols.map((c) => r[c] ?? null));
       }
@@ -252,13 +286,13 @@ export async function loadDataset(
   if (dataset === "suppliers") {
     const { data } = await fetchAllPages(api, SpendeskPaths.getSuppliers, {}, { listKey: "suppliers" });
     const list = Array.isArray(data) ? data : [];
-    _db.exec("DROP TABLE IF EXISTS suppliers;");
-    _db.exec(suppliersTableSchema());
+    db.exec("DROP TABLE IF EXISTS suppliers;");
+    db.exec(suppliersTableSchema());
     const cols = ["id", "name", "country", "vat_number", "iban", "email", "created_at"];
-    const ins = _db.prepare(
+    const ins = db.prepare(
       `INSERT INTO suppliers (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`
     );
-    const runMany = _db.transaction((rows: Record<string, string | null>[]) => {
+    const runMany = db.transaction((rows: Record<string, string | null>[]) => {
       for (const r of rows) {
         ins.run(...cols.map((c) => r[c] ?? null));
       }
@@ -277,13 +311,13 @@ export async function loadDataset(
     if (to) params.createdTo = to;
     const { data } = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, params, { listKey: "purchaseOrders" });
     const list = Array.isArray(data) ? data : [];
-    _db.exec("DROP TABLE IF EXISTS purchase_orders;");
-    _db.exec(purchaseOrdersTableSchema());
+    db.exec("DROP TABLE IF EXISTS purchase_orders;");
+    db.exec(purchaseOrdersTableSchema());
     const cols = ["id", "number", "supplier_name", "supplier_id", "status", "total_amount", "currency", "start_date", "end_date", "cost_center", "description", "created_at"];
-    const ins = _db.prepare(
+    const ins = db.prepare(
       `INSERT INTO purchase_orders (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`
     );
-    const runMany = _db.transaction((rows: Record<string, string | number | null>[]) => {
+    const runMany = db.transaction((rows: Record<string, string | number | null>[]) => {
       for (const r of rows) {
         ins.run(...cols.map((c) => r[c] ?? null));
       }
@@ -311,8 +345,7 @@ export function isAllowedQuery(sql: string): { allowed: boolean; message?: strin
       message: `Only SELECT and WITH (CTE) queries are allowed. Got: ${trimmed.slice(0, 50)}...`,
     };
   }
-  const forbidden = ["INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "PRAGMA"];
-  for (const f of forbidden) {
+  for (const f of FORBIDDEN_KEYWORDS) {
     if (upper.includes(f)) {
       return { allowed: false, message: `Query must not contain ${f}.` };
     }
@@ -331,9 +364,10 @@ export function executeQuery(api: SpendeskClient, sql: string): ExecuteResult {
   const check = isAllowedQuery(sql);
   if (!check.allowed) throw new Error(check.message);
 
+  const db = getSessionDb();
   let stmt: Database.Statement;
   try {
-    stmt = _db.prepare(sql);
+    stmt = db.prepare(sql);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Invalid SQL: ${msg}`);
@@ -362,15 +396,16 @@ export interface TableInfo {
 
 /** List all user-created tables with schema and row count. */
 export function listLoadedTables(api: SpendeskClient): TableInfo[] {
-  const names = _db.prepare(
+  const db = getSessionDb();
+  const names = db.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
   ).all() as { name: string }[];
   const result: TableInfo[] = [];
   for (const { name } of names) {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) continue;
-    const info = _db.prepare(`PRAGMA table_info(${name})`).all() as Array<{ name: string; type: string }>;
+    const info = db.prepare(`PRAGMA table_info(${name})`).all() as Array<{ name: string; type: string }>;
     const cols = info ?? [];
-    const countRow = _db.prepare(`SELECT count(*) as c FROM ${name}`).get() as { c: number };
+    const countRow = db.prepare(`SELECT count(*) as c FROM ${name}`).get() as { c: number };
     result.push({
       name,
       columns: cols.map((c) => ({ name: c.name, type: c.type })),
@@ -382,34 +417,36 @@ export function listLoadedTables(api: SpendeskClient): TableInfo[] {
 
 /** Drop one or more tables. If tableNames is empty, drop all user tables. */
 export function clearTables(api: SpendeskClient, tableNames?: string[]): { dropped: string[] } {
+  const db = getSessionDb();
   const dropped: string[] = [];
   if (!tableNames || tableNames.length === 0) {
-    const names = _db.prepare(
+    const names = db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ).all() as { name: string }[];
     for (const { name } of names) {
-      _db.exec(`DROP TABLE IF EXISTS ${name}`);
+      db.exec(`DROP TABLE IF EXISTS ${name}`);
       dropped.push(name);
     }
     return { dropped };
   }
   const safeNames = tableNames.filter((n) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(n));
   for (const name of safeNames) {
-    _db.exec(`DROP TABLE IF EXISTS ${name}`);
+    db.exec(`DROP TABLE IF EXISTS ${name}`);
     dropped.push(name);
   }
   return { dropped };
 }
 
-/** Smoke test: verify the module-level singleton is shared (run at load). */
+/** Smoke test: verify per-session DB is created and used (run at load, uses _default when no context). */
 function _smokeTest(): void {
-  _db.exec("CREATE TABLE IF NOT EXISTS _test (id INTEGER)");
-  _db.prepare("INSERT INTO _test VALUES (1)").run();
-  const row = _db.prepare("SELECT COUNT(*) as c FROM _test").get() as { c: number };
+  const db = getSessionDb();
+  db.exec("CREATE TABLE IF NOT EXISTS _test (id INTEGER)");
+  db.prepare("INSERT INTO _test VALUES (1)").run();
+  const row = db.prepare("SELECT COUNT(*) as c FROM _test").get() as { c: number };
   if (row.c !== 1) {
-    throw new Error("SQLite singleton is broken - connection not shared between calls");
+    throw new Error("SQLite session DB is broken - connection not working");
   }
-  _db.exec("DROP TABLE IF EXISTS _test");
-  console.log("✅ SQLite singleton OK");
+  db.exec("DROP TABLE IF EXISTS _test");
+  console.log("✅ SQLite session DB OK");
 }
 _smokeTest();

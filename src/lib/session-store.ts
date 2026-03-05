@@ -4,6 +4,7 @@
 
 import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { ClientCredentials } from "../middleware/auth.js";
+import { closeSessionDb } from "./ephemeral-sqlite.js";
 
 export interface SessionInfo {
   transport: StreamableHTTPServerTransport;
@@ -57,10 +58,11 @@ export class SessionStore {
   }
 
   /**
-   * Delete a session.
+   * Delete a session and close its ephemeral SQLite DB.
    */
   delete(sessionId: string): void {
     this.sessions.delete(sessionId);
+    closeSessionDb(sessionId);
   }
 
   /**
@@ -90,6 +92,7 @@ export class SessionStore {
           console.error(`Error closing expired session ${sessionId}:`, err);
         }
         this.sessions.delete(sessionId);
+        closeSessionDb(sessionId);
       }
     }
   }
@@ -112,6 +115,9 @@ export class SessionStore {
     });
 
     await Promise.all(closePromises);
+    for (const sessionId of this.sessions.keys()) {
+      closeSessionDb(sessionId);
+    }
     this.sessions.clear();
   }
 }

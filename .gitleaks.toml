@@ -1,0 +1,9 @@
+title = "Gitleaks config for mcp-poc"
+
+[allowlist]
+  description = "Allowlist for known false positives"
+  regexes = [
+    '''your_token_here''',
+    '''your_client_id''',
+    '''your_client_secret'''
+  ]

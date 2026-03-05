@@ -5,9 +5,21 @@
 
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
-const DB_PATH = process.env.DB_PATH || "./data/clients.db";
+/** Validate DB_PATH so it cannot point outside ./data (prevents path traversal). */
+function getSafeDbPath(): string {
+  const rawPath = process.env.DB_PATH ?? "./data/clients.db";
+  const resolved = resolve(rawPath);
+  const allowedBase = resolve("./data");
+  if (!resolved.startsWith(allowedBase)) {
+    throw new Error(`Security: DB_PATH "${rawPath}" is outside the allowed directory`);
+  }
+  mkdirSync(dirname(resolved), { recursive: true });
+  return resolved;
+}
+
+const DB_PATH = getSafeDbPath();
 
 /**
  * Initialize database schema (create tables if they don't exist).
@@ -42,19 +54,6 @@ export function initDatabase(db: Database.Database): void {
  * Create a new database instance with schema initialized.
  */
 export function createDatabase(): Database.Database {
-  try {
-    // Ensure the directory exists before creating the database
-    const dbDir = dirname(DB_PATH);
-    mkdirSync(dbDir, { recursive: true });
-    console.log(`✓ Database directory created/verified: ${dbDir}`);
-  } catch (err) {
-    // Ignore error if directory already exists
-    if (err && typeof err === "object" && "code" in err && err.code !== "EEXIST") {
-      console.error("❌ Failed to create database directory:", err);
-      throw err;
-    }
-  }
-
   try {
     const db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");

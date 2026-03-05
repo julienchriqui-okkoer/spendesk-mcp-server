@@ -7,7 +7,8 @@ import "dotenv/config";
  */
 
 import { randomUUID } from "node:crypto";
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -17,6 +18,8 @@ import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient, type ClientCredentials } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
+import { mcpSessionStorage } from "./lib/request-context.js";
+import { closeSessionDb } from "./lib/ephemeral-sqlite.js";
 import { logHttpRequestUsage } from "./lib/usage-logger.js";
 import { getTopTools, getVolumeByDay, getRecentCalls } from "./lib/usage-stats.js";
 
@@ -148,6 +151,23 @@ const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 // We'll register routes before the MCP middleware takes effect
 const app = createMcpExpressApp({ host: HOST, ...(allowedHosts && { allowedHosts }) });
 
+// Rate limiting: reduce abuse on public endpoint
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
+const mcpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "MCP rate limit exceeded." },
+});
+app.use(globalLimiter);
+
 // Register healthcheck FIRST, before any MCP middleware that might block it
 // This endpoint must be accessible without any host validation for Railway healthchecks
 app.get("/health", (req: Request, res: Response) => {
@@ -185,7 +205,7 @@ app.get("/", (_req: Request, res: Response) => {
         get: "GET /mcp (SSE, send mcp-session-id)",
         delete: "DELETE /mcp (close session)",
         doc: "GET /doc (redirect to documentation)",
-        usage: "GET /usage (MCP usage dashboard, optional USAGE_UI_SECRET)",
+        usage: "GET /usage (MCP usage dashboard; if USAGE_UI_SECRET set, use Authorization: Bearer)",
       },
     })
   );
@@ -210,17 +230,14 @@ app.get("/doc", (_req: Request, res: Response) => {
 </html>`);
 });
 
-// GET /usage — MCP usage dashboard (optional: set USAGE_UI_SECRET to require ?secret= or Authorization: Bearer)
+// GET /usage — MCP usage dashboard (optional: set USAGE_UI_SECRET to require Authorization: Bearer; never use secret in URL)
 const USAGE_UI_SECRET = process.env.USAGE_UI_SECRET?.trim() || "";
 app.get("/usage", (req: Request, res: Response) => {
   if (USAGE_UI_SECRET) {
-    const authHeader = req.headers.authorization;
-    const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    const querySecret = (req.query.secret as string)?.trim() || "";
-    if (bearer !== USAGE_UI_SECRET && querySecret !== USAGE_UI_SECRET) {
-      res.status(401).type("text/html").send(
-        "<!DOCTYPE html><html><body><p>Unauthorized. Set ?secret= or Authorization: Bearer with USAGE_UI_SECRET.</p></body></html>"
-      );
+    const authHeader = req.headers["authorization"];
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+    if (token !== USAGE_UI_SECRET) {
+      res.status(401).json({ error: "Unauthorized: missing or invalid Authorization header" });
       return;
     }
   }
@@ -306,38 +323,41 @@ app.get("/usage", (req: Request, res: Response) => {
 </html>`);
 });
 
-// Apply authentication middleware to MCP routes
+// Apply authentication middleware and stricter rate limit to MCP routes
+app.use("/mcp", mcpLimiter);
 app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
   const start = Date.now();
-  try {
-    const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    const sessionInfo = sessionId ? sessionStore.get(sessionId) : undefined;
-    let transport: StreamableHTTPServerTransport | undefined = sessionInfo?.transport;
+  const sessionId = (req.headers["mcp-session-id"] as string) ?? null;
+  await mcpSessionStorage.run(sessionId, async () => {
+    try {
+      const sid = req.headers["mcp-session-id"] as string | undefined;
+      const sessionInfo = sid ? sessionStore.get(sid) : undefined;
+      let transport: StreamableHTTPServerTransport | undefined = sessionInfo?.transport;
 
-    if (transport) {
-      await transport.handleRequest(req, res, req.body);
-      return;
-    }
+      if (transport) {
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
 
-    if (!sessionId && isInitializeRequest(req.body)) {
-      const clientToken = req.clientToken;
-      const clientCredentials = req.clientCredentials;
+      if (!sid && isInitializeRequest(req.body)) {
+        const clientToken = req.clientToken;
+        const clientCredentials = req.clientCredentials;
 
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => {
-          if (transport) {
-            sessionStore.set(id, transport, clientToken, clientCredentials);
-          }
-        },
-      });
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (id) => {
+            if (transport) {
+              sessionStore.set(id, transport, clientToken, clientCredentials);
+            }
+          },
+        });
 
-      const api = buildApi(clientToken, clientCredentials);
-      const mcp = createMcpServer(api);
-      await mcp.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-      return;
-    }
+        const api = buildApi(clientToken, clientCredentials);
+        const mcp = createMcpServer(api);
+        await mcp.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        return;
+      }
 
     res.status(400).json({
       jsonrpc: "2.0",
@@ -376,12 +396,15 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
       console.error("[UsageLogger] Failed to log /mcp HTTP request:", logErr);
     }
   }
+  });
 });
 
 app.get("/mcp", async (req: Request, res: Response) => {
-  const sessionId = req.headers["mcp-session-id"] as string | undefined;
-  const sessionInfo = sessionId ? sessionStore.get(sessionId) : undefined;
-  if (!sessionId || !sessionInfo) {
+  const sessionId = (req.headers["mcp-session-id"] as string) ?? null;
+  await mcpSessionStorage.run(sessionId, async () => {
+  const sid = req.headers["mcp-session-id"] as string | undefined;
+  const sessionInfo = sid ? sessionStore.get(sid) : undefined;
+  if (!sid || !sessionInfo) {
     const accept = (req.headers["accept"] || "").toLowerCase();
     if (accept.includes("text/html")) {
       res.status(400).type("text/html").send(`
@@ -401,6 +424,7 @@ app.get("/mcp", async (req: Request, res: Response) => {
     return;
   }
   await sessionInfo.transport.handleRequest(req, res);
+  });
 });
 
 app.delete("/mcp", async (req: Request, res: Response) => {
@@ -410,6 +434,7 @@ app.delete("/mcp", async (req: Request, res: Response) => {
     if (sessionInfo) {
       await sessionInfo.transport.close();
       sessionStore.delete(sessionId);
+      closeSessionDb(sessionId);
     }
   }
   res.status(204).send();

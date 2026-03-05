@@ -13,7 +13,9 @@ data/
 # Environment (ne jamais commiter les tokens)
 .env
 .env.local
-.env.*.local
+.env.production
+.env.*
+!.env.example
 
 # IDE / Editor
 .idea/
