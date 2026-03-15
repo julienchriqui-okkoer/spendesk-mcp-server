@@ -47,6 +47,20 @@ const listSchema = {
   filters: filtersSchema,
 };
 
+// Bank fees: date filters to avoid loading all fees (e.g. daily agent needs only yesterday)
+const bankFeesSchema = {
+  ...paginationSchema,
+  chargedFrom: z
+    .string()
+    .optional()
+    .describe("Filter fees charged from this date (ISO 8601, e.g. YYYY-MM-DD). Use to limit scope (e.g. yesterday)."),
+  chargedTo: z
+    .string()
+    .optional()
+    .describe("Filter fees charged until this date (ISO 8601, e.g. YYYY-MM-DD)."),
+  filters: filtersSchema,
+};
+
 // Specific schema for settlements with dedicated parameters
 const settlementsSchema = {
   ...paginationSchema,
@@ -385,11 +399,14 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       }
       case "spendesk_update_settlement_state":
         return api.put(SpendeskPaths.updateSettlementState(args.settlementId as string), { state: args.state });
-      case "spendesk_get_bank_fees":
-        return api.get(
-          SpendeskPaths.getBankFees,
-          buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> })
-        );
+      case "spendesk_get_bank_fees": {
+        const base = buildQueryParams(args as { page?: number; perPage?: number; filters?: Record<string, unknown> });
+        const chargedFrom = (args as { chargedFrom?: string }).chargedFrom;
+        const chargedTo = (args as { chargedTo?: string }).chargedTo;
+        if (chargedFrom) base.chargedFrom = chargedFrom;
+        if (chargedTo) base.chargedTo = chargedTo;
+        return api.get(SpendeskPaths.getBankFees, base);
+      }
       case "spendesk_create_payables_snapshot": {
         const body = buildPayablesSnapshotPayload(args as Parameters<typeof buildPayablesSnapshotPayload>[0]);
         try {
@@ -596,6 +613,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           to: String(args.to),
           status: args.status as "paid" | "unpaid" | "partial" | undefined,
           currency: args.currency as string | undefined,
+          payableType: args.payableType as string | undefined,
         });
         break;
       case "spendesk_get_ap_aging":
@@ -779,8 +797,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_bank_fees", () =>
     mcp.tool(
       "spendesk_get_bank_fees",
-      "Get bank fees. Useful for accounting and dashboards. Use 'filters' to pass any API query parameters.",
-      listSchema,
+      "Get bank fees. Useful for accounting and dashboards. Prefer chargedFrom/chargedTo (ISO 8601) to limit scope (e.g. yesterday's fees). Use 'filters' for any other API query parameters.",
+      bankFeesSchema,
       async (args) => toContent(await run("spendesk_get_bank_fees", args))
     )
   );
@@ -998,6 +1016,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           "Filter by payment status. Valid values: 'paid', 'unpaid', 'partial'."
         ),
       currency: z.string().optional().describe("Filter by original currency e.g. USD, GBP"),
+      payableType: z
+        .string()
+        .optional()
+        .describe(
+          "Filter by payable type. Valid values include: 'invoicePurchase', 'subscriptionCard', 'singlePurchaseCard', 'physicalCard', 'multiUseCard', 'expenseClaim', 'mileageAllowance', 'perDiem'."
+        ),
     },
       async (args) => toContent(await run("spendesk_get_payment_status", args))
     )

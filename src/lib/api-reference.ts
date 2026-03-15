@@ -98,6 +98,8 @@ export const API_REFERENCE = {
       queryParams: [
         { name: "page", type: "number", required: false, apiKey: "page", description: "Page" },
         { name: "perPage", type: "number", required: false, apiKey: "per_page", description: "Per page" },
+        { name: "chargedFrom", type: "string", required: false, apiKey: "chargedFrom", description: "Filter fees charged from this date (ISO 8601)" },
+        { name: "chargedTo", type: "string", required: false, apiKey: "chargedTo", description: "Filter fees charged until this date (ISO 8601)" },
         { name: "filters", type: "object", required: false, description: "Additional query params" },
       ],
     },

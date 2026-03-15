@@ -8,6 +8,7 @@ import { SpendeskPaths } from "../spendesk-api/endpoints.js";
 import { fetchAllPages } from "./fetch-all-pages.js";
 import { fetchAllPayables, type Payable } from "./fetch-all-payables.js";
 import { sanitizePurchaseOrder } from "./sanitize-purchase-order.js";
+import { fetchPayableDetails } from "./fetch-payable-details.js";
 
 /** Payable types that have employee = userId (cardholder). */
 const CARD_PAYABLE_TYPES = new Set([
@@ -463,6 +464,12 @@ export type PaymentStatusParams = {
   to: string;
   status?: "paid" | "unpaid" | "partial";
   currency?: string;
+  /**
+   * Optional filter by payable type.
+   * Examples: "invoicePurchase", "subscriptionCard", "singlePurchaseCard", "physicalCard", "multiUseCard",
+   * "expenseClaim", "mileageAllowance", "perDiem".
+   */
+  payableType?: string;
 };
 
 function paymentStatus(p: Payable): "paid" | "unpaid" | "partial" {
@@ -486,24 +493,47 @@ export async function getPaymentStatus(
     currency: string;
     status: "paid" | "unpaid" | "partial";
     allocatedAmount: number;
+    /** Alias fields for LLM ergonomics (do not remove existing ones for backward compatibility). */
+    vendor?: string;
+    amount?: number;
+    paymentStatus?: "paid" | "unpaid" | "partial";
+    invoiceDueDate?: string | null;
+    payableType?: string;
+    description?: string;
+    costCenterName?: string;
   }>;
 }> {
-  const { from, to, status, currency } = params;
+  const { from, to, status, currency, payableType } = params;
   const payables = await fetchAllPayables(api, from, to);
   let filtered = payables;
   if (currency) filtered = filtered.filter((p) => p.currency === currency);
   if (status) filtered = filtered.filter((p) => paymentStatus(p) === status);
+  if (payableType) filtered = filtered.filter((p) => p.type === payableType);
 
   const payablesOut = filtered.map((p) => {
     const allocated = (p.allocations ?? []).reduce((sum, a) => sum + a.allocatedAmount, 0);
+    const supplierName = p.counterparty?.name ?? "";
+    const statusValue = paymentStatus(p);
+    const costCenterName =
+      (p.lineItems && p.lineItems[0]?.costCenterName) != null ? String(p.lineItems[0].costCenterName) : undefined;
+
     return {
       id: p.id,
-      supplier: p.counterparty?.name ?? "",
+      // Existing fields
+      supplier: supplierName,
       invoiceNumber: p.invoiceNumber,
       functionalAmount: p.functionalAmount,
       currency: p.currency,
-      status: paymentStatus(p),
+      status: statusValue,
       allocatedAmount: round2(allocated),
+      // New, more explicit fields (aliases for LLMs)
+      vendor: supplierName,
+      amount: p.functionalAmount,
+      paymentStatus: statusValue,
+      invoiceDueDate: p.invoiceDueDate ?? null,
+      payableType: p.type,
+      description: p.description,
+      costCenterName,
     };
   });
 
@@ -547,13 +577,15 @@ export async function getApAging(
   // Bounded to last 12 months to avoid 409 Conflict and snapshot timeout
   const payables = await fetchAllPayables(api, from.toISOString().slice(0, 10), to);
   const unpaid = payables.filter((p) => paymentStatus(p) !== "paid");
-  const withDueDate = unpaid.filter((p) => p.invoiceDueDate ?? p.payableDate);
-  const withDue = withDueDate.map((p) => {
-    const dueStr = p.invoiceDueDate ?? p.payableDate;
-    const due = new Date(dueStr);
-    const daysOverdue = Math.floor((asOfDate.getTime() - due.getTime()) / (24 * 60 * 60 * 1000));
-    return { p, dueStr, daysOverdue, amount: p.functionalAmount };
-  });
+  const withDue = unpaid
+    .filter((p) => p.invoiceDueDate)
+    .map((p) => {
+      const dueStr = p.invoiceDueDate as string;
+      const due = new Date(dueStr);
+      const daysOverdue = Math.floor((asOfDate.getTime() - due.getTime()) / (24 * 60 * 60 * 1000));
+      return { p, dueStr, daysOverdue, amount: p.functionalAmount };
+    });
+  const noDueDate = unpaid.filter((p) => !p.invoiceDueDate);
 
   const current = withDue.filter((x) => x.daysOverdue < 0);
   const overdue_1_30 = withDue.filter((x) => x.daysOverdue >= 0 && x.daysOverdue <= 30);
@@ -576,16 +608,49 @@ export async function getApAging(
     .slice(0, 10);
 
   let payablesList = withDue.filter((x) => x.daysOverdue >= 0);
-  if (params.includeUpcoming) payablesList = withDue;
+  if (params.includeUpcoming) {
+    // Include all with a due date plus invoices with no due date in a dedicated bucket.
+    payablesList = withDue;
+  }
 
-  const payablesOut = payablesList.map((x) => ({
-    supplier: x.p.counterparty?.name ?? "",
-    invoiceNumber: x.p.invoiceNumber,
-    dueDate: x.dueStr,
-    daysOverdue: Math.max(0, x.daysOverdue),
-    amountEUR: round2(x.amount),
-    amountDueEUR: round2(x.amount),
-  }));
+  const payablesOut = [
+    ...payablesList.map((x) => {
+      // Bucket classification for LLMs: overdue / due_soon / upcoming
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const due = new Date(x.dueStr);
+      const deltaDays = Math.floor((due.getTime() - asOfDate.getTime()) / msPerDay);
+      let bucket: "overdue" | "due_soon" | "upcoming";
+      if (deltaDays < 0) {
+        bucket = "overdue";
+      } else if (deltaDays <= 7) {
+        bucket = "due_soon";
+      } else {
+        bucket = "upcoming";
+      }
+
+      return {
+        supplier: x.p.counterparty?.name ?? "",
+        invoiceNumber: x.p.invoiceNumber,
+        dueDate: x.dueStr,
+        daysOverdue: Math.max(0, x.daysOverdue),
+        amountEUR: round2(x.amount),
+        amountDueEUR: round2(x.amount),
+        bucket,
+      };
+    }),
+    // Invoices with no due date: surfaced only when includeUpcoming = true
+    ...(params.includeUpcoming
+      ? noDueDate.map((p) => ({
+          supplier: p.counterparty?.name ?? "",
+          invoiceNumber: p.invoiceNumber,
+          dueDate: "",
+          daysOverdue: 0,
+          amountEUR: round2(p.functionalAmount),
+          amountDueEUR: round2(p.functionalAmount),
+          bucket: "no_due_date" as const,
+        }))
+      : []),
+  ];
 
   return {
     asOfDate: asOf,
