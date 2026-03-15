@@ -111,8 +111,8 @@ type SnapshotPageResponse = {
 };
 
 async function createSnapshot(api: SpendeskClient, from: string, to: string): Promise<string> {
-  // API accepts flat body (fromPayableDate, toPayableDate); wrapper { query } can cause 400
-  const body = { fromPayableDate: from, toPayableDate: to };
+  // API requires body wrapped as { query: {...} }; params at root cause 400
+  const body = { query: { fromPayableDate: from, toPayableDate: to } };
   const res = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, body);
   const id =
     (res as SnapshotCreateResponse).key ??

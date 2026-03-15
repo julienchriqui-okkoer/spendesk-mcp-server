@@ -367,12 +367,12 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 ### Spend Data
 - `spendesk_get_settlements` – Liste des settlements (avec filtres via `filters`)
 - `spendesk_update_settlement_state` – Mise à jour de l'état d'un settlement
-- `spendesk_get_bank_fees` – Frais bancaires (avec filtres via `filters`)
+- `spendesk_get_bank_fees` – Frais bancaires (`chargedFrom` / `chargedTo` pour limiter par date, ou `filters`). Voir [Export bank fees → NetSuite](docs/export-bank-fees-to-netsuite.md) pour le flow journalisation quotidienne.
 - `spendesk_create_payables_snapshot` / `spendesk_get_payables_snapshot` – Snapshots de payables (création : filtres Public API ; récupération : pagination `page`, `perPage` max 100, `filters` en camelCase)
 - `spendesk_get_payable` / `spendesk_get_payable_attachments` – Détail payable et pièces jointes
 - `spendesk_update_payable_bookkeeping` – Statut comptable d'un payable (sync ERP)
 - **Report (réponses clés en main)** : `spendesk_get_spend_dashboard` – Dashboard spend (répartition par cost center / catégorie / compte de charge) ; `spendesk_get_top_suppliers_by_spend` – Top N fournisseurs par spend avec payables/settlements ; `spendesk_get_purchase_orders_and_payables_export` – Export POs + payables d'une période, liés par fournisseur
-- `spendesk_get_wallet_loads` / `spendesk_get_wallet_summary` – Recharges et résumé wallet
+- `spendesk_get_wallet_loads` / `spendesk_get_wallet_summary` – Recharges et résumé wallet. Voir [Export wallet loads → NetSuite](docs/export-wallet-loads-to-netsuite.md) pour le flow journalisation quotidienne.
 
 ### Analytical
 - `spendesk_get_analytical_fields` / `spendesk_get_analytical_values` – Champs et valeurs analytiques (appeler d'abord `spendesk_get_analytical_fields` pour obtenir les `fieldId`, puis `spendesk_get_analytical_values` avec l'argument `fieldId`)
@@ -399,6 +399,10 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_execute_sql_query` – Exécute une requête SQL en lecture seule (SELECT ou WITH). Paramètre : `sql`. Résultats limités à 1000 lignes.
 - `spendesk_list_loaded_tables` – Liste les tables chargées avec schéma (colonnes, types) et nombre de lignes.
 - `spendesk_clear_sqlite_tables` – Supprime des tables (`table_names`) ou toutes si vide.
+
+### Flows / Intégrations
+- **[Export bank fees → NetSuite](docs/export-bank-fees-to-netsuite.md)** — Journalisation quotidienne des frais bancaires (otherFee / fxFee) en écritures comptables NetSuite, avec batching par jour et idempotence.
+- **[Export wallet loads → NetSuite](docs/export-wallet-loads-to-netsuite.md)** — Journalisation des recharges wallet (virements bank → Spendesk) en écritures comptables NetSuite, une JE par load, avec idempotence et option `WALLET_LOAD_AMOUNT_UNIT` (cents vs EUR).
 
 ### Découverte / Référence API
 - `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`) pour filtrer sur un seul endpoint.

@@ -152,21 +152,23 @@ export const API_REFERENCE = {
       method: "PUT",
       path: "/v1/payables/bookkeeping-status",
       mcpTool: "spendesk_update_payable_bookkeeping",
-      description: "Update bookkeeping status of a payable.",
+      description: "Update bookkeeping status of a payable. No path param; payableId and fields go in the request body.",
       bodyParams: [
-        { name: "payableId", type: "string", required: true, description: "Payable ID" },
-        { name: "payload", type: "object", required: true, description: "Bookkeeping status fields" },
+        { name: "payableId", type: "string", required: true, description: "Payable ID (in body, not in path)" },
+        { name: "bookkeepingStatus", type: "string", required: false, description: "e.g. 'exported'. Merged from payload into body." },
       ],
     },
     {
       method: "GET",
       path: "/v1/wallet-loads",
       mcpTool: "spendesk_get_wallet_loads",
-      description: "List wallet loads.",
+      description: "List wallet loads (top-ups). Use filters.createdFrom / filters.createdTo (ISO date) for daily export to NetSuite.",
       queryParams: [
         { name: "page", type: "number", required: false, apiKey: "page", description: "Page" },
         { name: "perPage", type: "number", required: false, apiKey: "per_page", description: "Per page" },
-        { name: "filters", type: "object", required: false, description: "Additional params" },
+        { name: "createdFrom", type: "string", required: false, description: "Filter loads created from this date (ISO 8601). Pass via filters." },
+        { name: "createdTo", type: "string", required: false, description: "Filter loads created until this date (ISO 8601). Pass via filters." },
+        { name: "filters", type: "object", required: false, description: "Additional query params (e.g. createdFrom, createdTo)" },
       ],
     },
     {

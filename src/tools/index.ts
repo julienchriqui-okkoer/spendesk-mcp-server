@@ -104,13 +104,11 @@ const payablesSnapshotSchema = {
   sortBy: z
     .enum(["payableDate"])
     .optional()
-    .default("payableDate")
-    .describe("Sort field (default: payableDate)."),
+    .describe("Sort field (e.g. payableDate)."),
   sortOrder: z
     .enum(["asc", "desc"])
     .optional()
-    .default("desc")
-    .describe("Sort order (default: 'desc'). Valid values: 'asc', 'desc'."),
+    .describe("Sort order. Valid values: 'asc', 'desc'."),
   fromPayableDate: dateYMD.optional().describe("Period start date (YYYY-MM-DD). Requires toPayableDate; max 31 days range."),
   toPayableDate: dateYMD.optional().describe("Period end date (YYYY-MM-DD). Required when fromPayableDate is set."),
   createdFrom: dateYMD.optional().describe("Period start for creation date (YYYY-MM-DD)."),
@@ -299,23 +297,23 @@ function buildPayablesSnapshotPayload(args: {
   filters?: Record<string, unknown>;
   payload?: Record<string, unknown>;
 }): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
+  const query: Record<string, unknown> = {};
 
-  // Explicit tool parameters (only fields allowed by the public schema)
+  // Explicit tool parameters → nested under "query" (API expects body.query)
   if (args.bookkeepingStatus != null && args.bookkeepingStatus.length > 0) {
-    body.bookkeepingStatus = args.bookkeepingStatus;
+    query.bookkeepingStatus = args.bookkeepingStatus;
   }
-  if (args.exportedAfter != null) body.exportedAfter = args.exportedAfter;
+  if (args.exportedAfter != null) query.exportedAfter = args.exportedAfter;
   if (args.ids != null) {
-    body.ids = Array.isArray(args.ids) ? args.ids : [args.ids];
+    query.ids = Array.isArray(args.ids) ? args.ids : [args.ids];
   }
-  if (args.sortBy != null) body.sortBy = args.sortBy;
-  if (args.sortOrder != null) body.sortOrder = args.sortOrder;
-  if (args.fromPayableDate != null) body.fromPayableDate = args.fromPayableDate;
-  if (args.toPayableDate != null) body.toPayableDate = args.toPayableDate;
-  if (args.createdFrom != null) body.createdFrom = args.createdFrom;
-  if (args.createdTo != null) body.createdTo = args.createdTo;
-  if (args.updatedFrom != null) body.updatedFrom = args.updatedFrom;
+  if (args.sortBy != null) query.sortBy = args.sortBy;
+  if (args.sortOrder != null) query.sortOrder = args.sortOrder;
+  if (args.fromPayableDate != null) query.fromPayableDate = args.fromPayableDate;
+  if (args.toPayableDate != null) query.toPayableDate = args.toPayableDate;
+  if (args.createdFrom != null) query.createdFrom = args.createdFrom;
+  if (args.createdTo != null) query.createdTo = args.createdTo;
+  if (args.updatedFrom != null) query.updatedFrom = args.updatedFrom;
 
   // Backwards compatibility: use payload to populate allowed fields only
   if (args.payload && typeof args.payload === "object") {
@@ -339,36 +337,35 @@ function buildPayablesSnapshotPayload(args: {
       ] as const;
       for (const key of allowedKeys) {
         const value = q[key];
-        if (value != null && body[key] === undefined) {
+        if (value != null && query[key] === undefined) {
           if (key === "ids" && !Array.isArray(value)) {
-            body.ids = [value as string];
+            query.ids = [value as string];
           } else {
-            body[key] = value;
+            query[key] = value;
           }
         }
       }
     }
 
     // Legacy: payload.{from,to} → fromPayableDate/toPayableDate
-    if (p.from != null && body.fromPayableDate === undefined) {
-      body.fromPayableDate = p.from;
+    if (p.from != null && query.fromPayableDate === undefined) {
+      query.fromPayableDate = p.from;
     }
-    if (p.to != null && body.toPayableDate === undefined) {
-      body.toPayableDate = p.to;
+    if (p.to != null && query.toPayableDate === undefined) {
+      query.toPayableDate = p.to;
     }
 
     // If only fromPayableDate is set, mirror it into toPayableDate to satisfy the API constraint.
-    if (body.fromPayableDate != null && body.toPayableDate === undefined) {
-      body.toPayableDate = body.fromPayableDate;
+    if (query.fromPayableDate != null && query.toPayableDate === undefined) {
+      query.toPayableDate = query.fromPayableDate;
     }
 
     // Any other keys in payload are ignored on purpose to avoid sending
     // additional properties that the Public API would reject.
   }
 
-  // Do not forward generic "filters" to the snapshot endpoint: it only accepts the explicit fields above.
-  // API requires all filters nested under "query" (POST /v1/snapshots/payables).
-  return Object.keys(body).length > 0 ? { query: body } : {};
+  // API requires body wrapped as { query: {...} }; params at root cause 400.
+  return Object.keys(query).length > 0 ? { query } : {};
 }
 
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
@@ -430,11 +427,14 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.get(SpendeskPaths.getPayableById(args.payableId as string));
       case "spendesk_get_payable_attachments":
         return api.get(SpendeskPaths.getPayableAttachments(args.payableId as string));
-      case "spendesk_update_payable_bookkeeping":
+      case "spendesk_update_payable_bookkeeping": {
+        // API has no path param: PUT /v1/payables/bookkeeping-status with body { payableId, ...payload }
+        const payload = (args.payload as Record<string, unknown>) ?? {};
         return api.put(SpendeskPaths.updatePayableBookkeeping, {
           payableId: args.payableId,
-          ...(args.payload as Record<string, unknown>),
+          ...payload,
         });
+      }
       case "spendesk_get_wallet_loads":
         return api.get(
           SpendeskPaths.getWalletLoads,
@@ -843,10 +843,10 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_update_payable_bookkeeping", () =>
     mcp.tool(
       "spendesk_update_payable_bookkeeping",
-    "Update bookkeeping status of a payable (ERP sync).",
+    "Update bookkeeping status of a payable (ERP sync). API: PUT /v1/payables/bookkeeping-status (no path param); body = { payableId, ...payload } e.g. { payableId, bookkeepingStatus: 'exported' }.",
     {
-      payableId: z.string().describe("Payable ID"),
-      payload: z.record(z.unknown()).describe("Bookkeeping status payload"),
+      payableId: z.string().describe("Payable ID (sent in body)."),
+      payload: z.record(z.unknown()).describe("Fields merged into body, e.g. { bookkeepingStatus: 'exported' }."),
     },
       async (args) => toContent(await run("spendesk_update_payable_bookkeeping", args))
     )
