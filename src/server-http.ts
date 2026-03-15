@@ -31,16 +31,25 @@ function getRefreshToken(): string | null {
   return process.env.SPENDESK_REFRESH_TOKEN || null;
 }
 
-function getClientId(): string | null {
+/** Resolve client ID for env fallback: demo or prod according to useDemo. */
+function getEnvClientId(useDemo: boolean): string | null {
+  if (useDemo) {
+    return process.env.SPENDESK_CLIENT_ID_DEMO?.trim() || null;
+  }
   return process.env.SPENDESK_CLIENT_ID?.trim() || null;
 }
 
-function getClientSecret(): string | null {
+/** Resolve client secret for env fallback: demo or prod according to useDemo. */
+function getEnvClientSecret(useDemo: boolean): string | null {
+  if (useDemo) {
+    return process.env.SPENDESK_CLIENT_SECRET_DEMO?.trim() || null;
+  }
   return process.env.SPENDESK_CLIENT_SECRET?.trim() || null;
 }
 
 let fallbackTokenManager: TokenManager | null = null;
-let fallbackClientCredentials: ClientCredentialsAuth | null = null;
+let fallbackClientCredentialsProd: ClientCredentialsAuth | null = null;
+let fallbackClientCredentialsDemo: ClientCredentialsAuth | null = null;
 
 function getFallbackTokenManager(baseUrl: string): TokenManager | null {
   const access = getApiToken();
@@ -56,18 +65,28 @@ function getFallbackTokenManager(baseUrl: string): TokenManager | null {
   return fallbackTokenManager;
 }
 
-function getFallbackClientCredentials(baseUrl: string): ClientCredentialsAuth | null {
-  const id = getClientId();
-  const secret = getClientSecret();
+function getFallbackClientCredentials(baseUrl: string, useDemo: boolean): ClientCredentialsAuth | null {
+  const id = getEnvClientId(useDemo);
+  const secret = getEnvClientSecret(useDemo);
   if (!id || !secret) return null;
-  if (!fallbackClientCredentials) {
-    fallbackClientCredentials = new ClientCredentialsAuth({
+  if (useDemo) {
+    if (!fallbackClientCredentialsDemo) {
+      fallbackClientCredentialsDemo = new ClientCredentialsAuth({
+        baseUrl,
+        clientId: id,
+        clientSecret: secret,
+      });
+    }
+    return fallbackClientCredentialsDemo;
+  }
+  if (!fallbackClientCredentialsProd) {
+    fallbackClientCredentialsProd = new ClientCredentialsAuth({
       baseUrl,
       clientId: id,
       clientSecret: secret,
     });
   }
-  return fallbackClientCredentials;
+  return fallbackClientCredentialsProd;
 }
 
 // Extended session store with client token support
@@ -96,15 +115,17 @@ function buildApi(clientToken?: string, clientCredentials?: ClientCredentials): 
   }
 
   const apiToken = clientToken || getApiToken();
-  const hasEnvCredentials = getClientId() && getClientSecret();
+  const hasEnvCredentials = getEnvClientId(useDemo) && getEnvClientSecret(useDemo);
   if (!apiToken && !getRefreshToken() && !hasEnvCredentials) {
     throw new Error(
-      "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET / SPENDESK_API_TOKEN in env."
+      useDemo
+        ? "No Spendesk demo credentials. Set SPENDESK_USE_DEMO=true and SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO (or SPENDESK_API_TOKEN), or have the client send Bearer client_credentials."
+        : "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET / SPENDESK_API_TOKEN in env."
     );
   }
 
   if (!clientToken) {
-    const cc = getFallbackClientCredentials(baseUrl);
+    const cc = getFallbackClientCredentials(baseUrl, useDemo);
     if (cc) {
       return new SpendeskClient({
         apiToken: "",

@@ -24,7 +24,11 @@ Variables d'environnement :
 | Variable | Obligatoire | Description |
 |----------|--------------|-------------|
 | `SPENDESK_API_TOKEN` | Recommandé | Token Bearer (OAuth2 ou identifiants API) utilisé par défaut quand le client ne fournit pas de credentials explicites. **Ne pas commiter.** |
-| `SPENDESK_USE_DEMO` | Non | `true` ou `1` pour utiliser l'API démo (`https://public-api.demo.spendesk.com`). |
+| `SPENDESK_USE_DEMO` | Non | `true` ou `1` : utilise l’API **démo** (URL sandbox + `SPENDESK_CLIENT_ID_DEMO` / `SPENDESK_CLIENT_SECRET_DEMO`). Sinon : prod (URL publique + `SPENDESK_CLIENT_ID` / `SPENDESK_CLIENT_SECRET`). |
+| `SPENDESK_CLIENT_ID` | Non | Client ID Spendesk (prod). Utilisé en fallback quand le client n’envoie pas de credentials et `SPENDESK_USE_DEMO` est faux. |
+| `SPENDESK_CLIENT_SECRET` | Non | Client secret Spendesk (prod). À définir avec `SPENDESK_CLIENT_ID` pour le fallback prod. |
+| `SPENDESK_CLIENT_ID_DEMO` | Non | Client ID Spendesk **démo**. Utilisé en fallback quand `SPENDESK_USE_DEMO=true`. |
+| `SPENDESK_CLIENT_SECRET_DEMO` | Non | Client secret Spendesk **démo**. À définir avec `SPENDESK_CLIENT_ID_DEMO` pour le fallback démo. |
 | `DB_PATH` | Non | Chemin de la base SQLite utilisée pour le **monitoring** (`mcp_usage_events`). Défaut : `./data/clients.db`. |
 | `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
 | `USAGE_UI_SECRET` | Non | Si définie, la page **GET /usage** (dashboard MCP) exige `?secret=<valeur>` ou `Authorization: Bearer <valeur>`. |
@@ -36,9 +40,13 @@ Exemple avec un fichier `.env` (à ne pas commiter) :
 SPENDESK_API_TOKEN=your_token_here
 
 # Ou client credentials (alternative à SPENDESK_API_TOKEN)
+# Prod : SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET
 # SPENDESK_CLIENT_ID=your_client_id
 # SPENDESK_CLIENT_SECRET=your_client_secret
+# Démo : SPENDESK_USE_DEMO=true + SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO
 # SPENDESK_USE_DEMO=true
+# SPENDESK_CLIENT_ID_DEMO=your_demo_client_id
+# SPENDESK_CLIENT_SECRET_DEMO=your_demo_client_secret
 ```
 
 ### Désactiver certains outils (expérimentaux)
@@ -198,10 +206,10 @@ Le serveur appelle alors `POST /v1/auth/token` avec ces identifiants pour la ses
 
 Si aucun header d’auth n’est fourni, le serveur utilise les variables d’environnement :
 
-- **Client credentials** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (POST `/v1/auth/token`), ou
+- **Client credentials** : selon `SPENDESK_USE_DEMO`, le serveur utilise soit `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (prod), soit `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (démo). Dans les deux cas, il appelle POST `/v1/auth/token` avec Basic auth.
 - **Token Bearer** : `SPENDESK_API_TOKEN` (optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401).
 
-Cela permet d’exécuter le MCP en **mode single-tenant** (un seul compte Spendesk servi par cette instance).
+L’URL de l’API Spendesk est aussi choisie selon `SPENDESK_USE_DEMO` (sandbox vs public-api). Cela permet d’exécuter le MCP en **mode single-tenant** (un seul compte Spendesk servi par cette instance), en prod ou en démo.
 
 #### Déploiement (Docker, PaaS)
 
@@ -219,8 +227,10 @@ docker run -p 3000:3000 \
 1. **Créer un projet** : [railway.app](https://railway.app) → New Project → Deploy from GitHub repo.
 2. **Build** : Railway détecte le **Dockerfile** et build l'image, ou utilise `railway.json` (build : `npm ci && npm run build`, start : `node dist/server-http.js`). Si un Dockerfile est présent, il est utilisé en priorité.
 3. **Variables d'environnement** (Settings → Variables) :
-   - **Auth Spendesk** (au moins une option) :
-     - **Option A — Client credentials** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (récupérés depuis le dashboard Spendesk). Le serveur appelle `POST /v1/auth/token` avec Basic auth et renouvelle le token automatiquement.
+   - **Environnement** : `SPENDESK_USE_DEMO` = `true` pour la sandbox démo, `false` ou non défini pour la prod.
+   - **Auth Spendesk** (au moins une option pour l’environnement choisi) :
+     - **Option A — Client credentials prod** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (quand `SPENDESK_USE_DEMO` est faux).
+     - **Option A bis — Client credentials démo** : `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (quand `SPENDESK_USE_DEMO=true`).
      - **Option B — Token Bearer** : `SPENDESK_API_TOKEN` (token API Spendesk). Optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401.
    - `ALLOWED_HOSTS` (recommandé) — host(s) autorisés pour la validation DNS rebinding, ex. : `votre-service.railway.app` (sans `https://`). Tu peux récupérer le domaine après le premier déploiement (Settings → Networking → Generate domain).
 4. **Domaine** : Settings → Networking → Generate domain. L'URL MCP sera `https://<ton-domaine>.railway.app/mcp`.
