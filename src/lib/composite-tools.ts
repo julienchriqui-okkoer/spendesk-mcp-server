@@ -859,9 +859,13 @@ async function fetchOpenPurchaseOrders(api: SpendeskClient): Promise<SanitizedPO
   const [openResult, partiallyReceivedResult] = await Promise.all([
     fetchAllPages(api, SpendeskPaths.getPurchaseOrders, { status: "open", state: "approved" }, {
       listKey: "purchaseOrders",
+      pageSizeParam: "pageSize",
+      requestedPerPage: 30,
     }),
     fetchAllPages(api, SpendeskPaths.getPurchaseOrders, { status: "partially_received", state: "approved" }, {
       listKey: "purchaseOrders",
+      pageSizeParam: "pageSize",
+      requestedPerPage: 30,
     }),
   ]);
 

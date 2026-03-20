@@ -1,0 +1,193 @@
+{
+  "info": {
+    "_postman_id": "a7f2c9e1-4b3d-4c6e-9f00-suppliers-bulk",
+    "name": "Spendesk API — Suppliers bulk (create / patch / archive)",
+    "description": "Flux aligné sur `scripts/test-supplier-bulk-operations.mjs` :\n1. Obtenir un access_token (client credentials)\n2. POST /v1/suppliers (corps = tableau)\n3. PATCH /v1/suppliers (corps = tableau { id, ... })\n4. PATCH /v1/experimental/suppliers/status\n\nImporter aussi l’environnement et renseigner `client_id` / `client_secret`. Scopes : au minimum `experimental:supplier:manage` pour les mutations.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Auth — Client credentials",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const code = pm.response.code;",
+              "const j = pm.response.json();",
+              "pm.test('Token OK (200)', function () { pm.expect(code).to.eql(200); });",
+              "if (j.access_token) {",
+              "  pm.environment.set('access_token', j.access_token);",
+              "  console.log('access_token enregistré dans l’environnement');",
+              "} else {",
+              "  console.warn('Pas d\\'access_token dans la réponse');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{client_id}}", "type": "string" },
+            { "key": "password", "value": "{{client_secret}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"grant_type\": \"client_credentials\"\n}"
+        },
+        "url": "{{base_url}}/v1/auth/token",
+        "description": "POST `/v1/auth/token` avec Basic Auth (client_id / client_secret). Le script Tests enregistre `access_token` dans l’environnement actif."
+      },
+      "response": []
+    },
+    {
+      "name": "02 Suppliers — Bulk create (POST /v1/suppliers)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const t = Date.now() + '-' + Math.random().toString(36).slice(2, 8);",
+              "pm.environment.set('bulk_run_tag', t);",
+              "function vat() {",
+              "  return 'FR' + String(Math.floor(1e10 + Math.random() * 9e10)).slice(0, 11);",
+              "}",
+              "pm.environment.set('bulk_vat_1', vat());",
+              "pm.environment.set('bulk_vat_2', vat());",
+              "pm.environment.set('bulk_vat_3', vat());"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Create 201', function () { pm.expect(pm.response.code).to.eql(201); });",
+              "const j = pm.response.json();",
+              "const ids = [];",
+              "if (j.item && j.item.id) {",
+              "  ids.push(j.item.id);",
+              "  pm.environment.set('supplier_id_' + ids.length, j.item.id);",
+              "}",
+              "if (Array.isArray(j.items)) {",
+              "  j.items.forEach((it, i) => {",
+              "    if (it.outcome === 'created' && it.supplier && it.supplier.id) {",
+              "      ids.push(it.supplier.id);",
+              "      pm.environment.set('supplier_id_' + ids.length, it.supplier.id);",
+              "    }",
+              "  });",
+              "}",
+              "pm.environment.set('supplier_ids_json', JSON.stringify(ids));",
+              "console.log('IDs enregistrés: supplier_id_1..3 et supplier_ids_json', ids);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{access_token}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "[\n  {\n    \"name\": \"BulkTest A {{bulk_run_tag}}\",\n    \"primaryEmail\": \"bulk-a-{{bulk_run_tag}}@example.invalid\",\n    \"supplierDetails\": {\n      \"legalName\": \"BulkTest Legal A {{bulk_run_tag}}\",\n      \"vatNumber\": \"{{bulk_vat_1}}\",\n      \"country\": \"FR\",\n      \"city\": \"Lyon\",\n      \"zipcode\": \"69001\",\n      \"address\": \"10 rue Test Bulk\"\n    }\n  },\n  {\n    \"name\": \"BulkTest B {{bulk_run_tag}}\",\n    \"primaryEmail\": \"bulk-b-{{bulk_run_tag}}@example.invalid\",\n    \"supplierDetails\": {\n      \"legalName\": \"BulkTest Legal B {{bulk_run_tag}}\",\n      \"vatNumber\": \"{{bulk_vat_2}}\",\n      \"country\": \"FR\",\n      \"city\": \"Lyon\",\n      \"zipcode\": \"69001\",\n      \"address\": \"10 rue Test Bulk\"\n    }\n  },\n  {\n    \"name\": \"BulkTest C {{bulk_run_tag}}\",\n    \"primaryEmail\": \"bulk-c-{{bulk_run_tag}}@example.invalid\",\n    \"supplierDetails\": {\n      \"legalName\": \"BulkTest Legal C {{bulk_run_tag}}\",\n      \"vatNumber\": \"{{bulk_vat_3}}\",\n      \"country\": \"FR\",\n      \"city\": \"Lyon\",\n      \"zipcode\": \"69001\",\n      \"address\": \"10 rue Test Bulk\"\n    }\n  }\n]"
+        },
+        "url": "{{base_url}}/v1/suppliers",
+        "description": "Corps = **tableau** de `supplierToCreate`. Les IDs créés sont stockés en `supplier_id_1`, `supplier_id_2`, `supplier_id_3` et `supplier_ids_json`."
+      },
+      "response": []
+    },
+    {
+      "name": "03 Suppliers — Bulk patch (PATCH /v1/suppliers)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Patch 200', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{access_token}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "[\n  {\n    \"id\": \"{{supplier_id_1}}\",\n    \"name\": \"BulkTest UPDATED-1 {{bulk_run_tag}}\"\n  },\n  {\n    \"id\": \"{{supplier_id_2}}\",\n    \"name\": \"BulkTest UPDATED-2 {{bulk_run_tag}}\"\n  },\n  {\n    \"id\": \"{{supplier_id_3}}\",\n    \"name\": \"BulkTest UPDATED-3 {{bulk_run_tag}}\"\n  }\n]"
+        },
+        "url": "{{base_url}}/v1/suppliers",
+        "description": "Corps = **tableau** d’objets avec au minimum `id` + champs à modifier. Exécuter **02** avant pour remplir les variables."
+      },
+      "response": []
+    },
+    {
+      "name": "04 Suppliers — Bulk archive (PATCH experimental status)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Archive 200', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{access_token}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"supplierIds\": {{supplier_ids_json}},\n  \"isArchived\": true\n}"
+        },
+        "url": "{{base_url}}/v1/experimental/suppliers/status",
+        "description": "Bulk archive via `supplierIds` + `isArchived`. `supplier_ids_json` est un tableau JSON produit par la requête **02**."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://beta-sandbox.api.trunk.spendesk.services"
+    }
+  ]
+}

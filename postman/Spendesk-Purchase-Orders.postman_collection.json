@@ -1,0 +1,376 @@
+{
+  "info": {
+    "_postman_id": "b8e3d0f2-5c4e-5d7f-a011-purchase-orders",
+    "name": "Spendesk API — Purchase Orders",
+    "description": "Endpoints PO (Public API) : liste, détail, création, annulation, clôture.\n\n**Scopes** : `experimental:purchase-order:read` + `experimental:purchase-order:write` ; pour le dossier *Discovery* : `user:read`, `cost-center:read`, `supplier:read`, `analytical-field:read`.\n\n1. Importer l’environnement (`base_url`, `client_id`, `client_secret`).\n2. **01 Auth**.\n3. Dossier **02 Discovery** (remplit `po_user_id`, `po_cost_center_id`, `po_supplier_id`, `po_analytical_field_id`, `po_analytical_value_id`).\n4. **03 Liste** → enregistre `po_id` (1er PO de la page).\n5. **04 Get by ID** (lecture).\n6. **05 Create PO** → enregistre `po_id_last_created` si 201.\n7. **06 Cancel** / **07 Close** : utiliser `{{po_id_cancel}}` et `{{po_id_close}}` (deux OP **ouverts** jetables), ou `{{po_id_last_created}}` après une création réussie (ne pas fermer le même OP deux fois).\n\nVoir `postman/README.md` section Purchase Orders.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Auth — Client credentials",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const code = pm.response.code;",
+              "const j = pm.response.json();",
+              "pm.test('Token OK (200)', function () { pm.expect(code).to.eql(200); });",
+              "if (j.access_token) {",
+              "  pm.environment.set('access_token', j.access_token);",
+              "  pm.collectionVariables.set('access_token', j.access_token);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{client_id}}", "type": "string" },
+            { "key": "password", "value": "{{client_secret}}", "type": "string" }
+          ]
+        },
+        "body": { "mode": "raw", "raw": "{\n  \"grant_type\": \"client_credentials\"\n}" },
+        "url": "{{base_url}}/v1/auth/token"
+      },
+      "response": []
+    },
+    {
+      "name": "02 Discovery — IDs for Create PO",
+      "item": [
+        {
+          "name": "GET Users (save po_user_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const rows = j.data || j.users || [];",
+                  "if (rows[0]?.id) {",
+                  "  pm.environment.set('po_user_id', rows[0].id);",
+                  "  console.log('po_user_id=', rows[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "url": "{{base_url}}/v1/users?page=1&per_page=30"
+          },
+          "response": []
+        },
+        {
+          "name": "GET Cost centers (save po_cost_center_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const rows = j.data || [];",
+                  "if (rows[0]?.id) {",
+                  "  pm.environment.set('po_cost_center_id', rows[0].id);",
+                  "  console.log('po_cost_center_id=', rows[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "url": "{{base_url}}/v1/cost-centers?page=1&per_page=30"
+          },
+          "response": []
+        },
+        {
+          "name": "GET Suppliers (save po_supplier_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const rows = j.data || [];",
+                  "if (rows[0]?.id) {",
+                  "  pm.environment.set('po_supplier_id', rows[0].id);",
+                  "  console.log('po_supplier_id=', rows[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "url": "{{base_url}}/v1/suppliers?page=1&pageSize=30&isArchived=false"
+          },
+          "response": []
+        },
+        {
+          "name": "GET Analytical fields (save po_analytical_field_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const rows = j.data || [];",
+                  "const f = rows.find(r => r && r.isArchived === false) || rows[0];",
+                  "if (f?.id) {",
+                  "  pm.environment.set('po_analytical_field_id', f.id);",
+                  "  console.log('po_analytical_field_id=', f.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "url": "{{base_url}}/v1/analytical-fields?page=1&pageSize=30"
+          },
+          "response": []
+        },
+        {
+          "name": "GET Analytical values (save po_analytical_value_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const rows = j.data || [];",
+                  "if (rows[0]?.id) {",
+                  "  pm.environment.set('po_analytical_value_id', rows[0].id);",
+                  "  console.log('po_analytical_value_id=', rows[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+            },
+            "url": "{{base_url}}/v1/analytical-fields/{{po_analytical_field_id}}/values?page=1&pageSize=30"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 PO — List (GET /v1/purchase-orders)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('List 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+              "const j = pm.response.json();",
+              "const data = j.data || j.purchaseOrders || [];",
+              "if (data[0]?.id) {",
+              "  pm.environment.set('po_id', data[0].id);",
+              "  console.log('po_id (1er de la page)=', data[0].id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Accept", "value": "application/json" }],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+        },
+        "url": "{{base_url}}/v1/purchase-orders?page=1&pageSize=30"
+      },
+      "response": []
+    },
+    {
+      "name": "04 PO — Get by ID",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Get 200', function () { pm.expect(pm.response.code).to.eql(200); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Accept", "value": "application/json" }],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+        },
+        "url": "{{base_url}}/v1/purchase-orders/{{po_id}}?withItems=false"
+      },
+      "response": []
+    },
+    {
+      "name": "05 PO — Create (POST /v1/purchase-orders)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const t = Date.now() + '-' + Math.random().toString(36).slice(2, 8);",
+              "pm.environment.set('po_run_tag', t);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const j = pm.response.json();",
+              "const id = j.data?.id || j.id;",
+              "if (id) {",
+              "  pm.environment.set('po_id_last_created', id);",
+              "  console.log('po_id_last_created=', id);",
+              "}",
+              "if (pm.response.code === 201) {",
+              "  pm.test('Created 201', function () { pm.expect(pm.response.code).to.eql(201); });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{po_user_id}}\",\n  \"supplierId\": \"{{po_supplier_id}}\",\n  \"amount\": { \"amount\": 50000, \"currency\": \"EUR\", \"precision\": 2 },\n  \"netAmount\": { \"amount\": 50000, \"currency\": \"EUR\", \"precision\": 2 },\n  \"costCenterId\": \"{{po_cost_center_id}}\",\n  \"startDate\": \"2026-04-01T10:00:00.000Z\",\n  \"endDate\": \"2026-12-31T18:00:00.000Z\",\n  \"customFieldAssociations\": [\n    {\n      \"customFieldId\": \"{{po_analytical_field_id}}\",\n      \"customFieldValueId\": \"{{po_analytical_value_id}}\"\n    }\n  ],\n  \"description\": \"Postman PO {{po_run_tag}}\",\n  \"items\": [\n    {\n      \"name\": \"Ligne test {{po_run_tag}}\",\n      \"quantity\": 1,\n      \"unitPrice\": { \"amount\": 50000, \"currency\": \"EUR\", \"precision\": 2 },\n      \"vatRate\": 0\n    }\n  ],\n  \"deliveryNotesExpected\": false\n}"
+        },
+        "url": "{{base_url}}/v1/purchase-orders"
+      },
+      "response": []
+    },
+    {
+      "name": "05b PO — Create (minimal, customFieldAssociations [])",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const t = Date.now() + '-m-' + Math.random().toString(36).slice(2, 8);",
+              "pm.environment.set('po_run_tag', t);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const j = pm.response.json();",
+              "const id = j.data?.id || j.id;",
+              "if (id) pm.environment.set('po_id_last_created', id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{po_user_id}}\",\n  \"supplierId\": \"{{po_supplier_id}}\",\n  \"amount\": { \"amount\": 50000, \"currency\": \"EUR\", \"precision\": 2 },\n  \"netAmount\": { \"amount\": 50000, \"currency\": \"EUR\", \"precision\": 2 },\n  \"costCenterId\": \"{{po_cost_center_id}}\",\n  \"startDate\": \"2026-04-01T10:00:00.000Z\",\n  \"endDate\": \"2026-12-31T18:00:00.000Z\",\n  \"customFieldAssociations\": [],\n  \"description\": \"Postman PO minimal {{po_run_tag}}\",\n  \"items\": [],\n  \"deliveryNotesExpected\": false\n}"
+        },
+        "url": "{{base_url}}/v1/purchase-orders"
+      },
+      "response": []
+    },
+    {
+      "name": "06 PO — Cancel (POST .../cancel)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Accept", "value": "application/json" }],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+        },
+        "url": "{{base_url}}/v1/purchase-orders/{{po_id_cancel}}/cancel"
+      },
+      "response": []
+    },
+    {
+      "name": "07 PO — Close (POST .../close)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Accept", "value": "application/json" }],
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+        },
+        "url": "{{base_url}}/v1/purchase-orders/{{po_id_close}}/close"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "https://beta-sandbox.api.trunk.spendesk.services" },
+    { "key": "access_token", "value": "" },
+    { "key": "po_id_cancel", "value": "" },
+    { "key": "po_id_close", "value": "" }
+  ]
+}

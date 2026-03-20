@@ -155,6 +155,43 @@ const payablesSnapshotSchema = {
   payload: z.record(z.unknown()).optional().describe("Optional extra body fields (legacy: { from, to } are mapped to fromPayableDate, toPayableDate)."),
 };
 
+/** Args for spendesk_get_purchase_orders — matches GET /v1/purchase-orders query (see developer.spendesk.com reference). */
+const purchaseOrdersListSchema = {
+  perPage: z
+    .number()
+    .int()
+    .min(1)
+    .max(30)
+    .optional()
+    .describe("Items per API request, sent as pageSize (max 30 per Public API). Default 30."),
+  withItems: z.boolean().optional().describe("Include line items on each PO in the list (query withItems)."),
+  supplierIds: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe("Filter by supplier ID(s); string or array (comma-separated when sent)."),
+  supplierId: z.string().optional().describe("Single supplier id (convenience; becomes supplierIds)."),
+  status: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe("Filter by status: open | closed | cancelled (string or array)."),
+  companyIds: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .describe("Filter by company ID(s)."),
+  createdFrom: dateYMD.optional().describe("PO created on or after (YYYY-MM-DD)."),
+  createdTo: dateYMD.optional().describe("PO created on or before (YYYY-MM-DD)."),
+  startDateFrom: dateYMD.optional().describe("PO startDate on or after (YYYY-MM-DD)."),
+  startDateTo: dateYMD.optional().describe("PO startDate on or before (YYYY-MM-DD)."),
+  endDateFrom: dateYMD.optional().describe("PO endDate on or after (YYYY-MM-DD)."),
+  endDateTo: dateYMD.optional().describe("PO endDate on or before (YYYY-MM-DD)."),
+  from: dateYMD.optional().describe("Alias for createdFrom."),
+  to: dateYMD.optional().describe("Alias for createdTo."),
+  state: z.string().optional().describe("Optional legacy query param forwarded as state if set."),
+  userId: z.string().optional().describe("Optional query param forwarded as userId if set."),
+  ids: z.union([z.string(), z.array(z.string())]).optional().describe("Optional legacy ids filter."),
+  filters: filtersSchema,
+};
+
 /** Pagination query params; Spendesk Public API uses camelCase (page, perPage). */
 function paginate(args: { page?: number; perPage?: number }): Record<string, string> {
   const p: Record<string, string> = {};
@@ -248,56 +285,74 @@ function buildGetPayablesSnapshotParams(args: {
   return params;
 }
 
+/** Comma-separate list query values (Public API often accepts string or array). */
+function poQueryList(value: string | string[] | undefined): string | undefined {
+  if (value == null) return undefined;
+  return Array.isArray(value) ? value.join(",") : String(value);
+}
+
 /**
- * Build query params for purchase orders. The Spendesk API expects creation date
- * as "from" / "to" (not createdFrom/createdTo) and snake_case for some params.
- * We map tool args (createdFrom, supplierId, etc.) to the API query param names.
+ * Build query params for GET /v1/purchase-orders (see Spendesk OpenAPI).
+ * Pagination keys page / pageSize are normally added by fetchAllPages, not here.
  */
 function buildPurchaseOrdersQueryParams(args: {
-  page?: number;
-  perPage?: number;
-  status?: string;
-  state?: string;
+  withItems?: boolean;
+  supplierIds?: string | string[];
   supplierId?: string;
+  status?: string | string[];
+  state?: string;
+  companyIds?: string | string[];
   userId?: string;
   from?: string;
   to?: string;
   createdFrom?: string;
   createdTo?: string;
+  startDateFrom?: string;
+  startDateTo?: string;
+  endDateFrom?: string;
+  endDateTo?: string;
   updatedFrom?: string;
   updatedTo?: string;
   ids?: string | string[];
   filters?: Record<string, unknown>;
 }): Record<string, string> {
-  const params = paginate(args);
+  const params: Record<string, string> = {};
 
-  // All query parameters are sent to the API in camelCase, matching the MCP tool argument names.
-  if (args.status != null) params.status = String(args.status);
+  if (args.withItems != null) params.withItems = args.withItems ? "true" : "false";
+
+  const supplierIds = poQueryList(args.supplierIds) ?? (args.supplierId != null ? String(args.supplierId) : undefined);
+  if (supplierIds != null) params.supplierIds = supplierIds;
+
+  const st = poQueryList(args.status);
+  if (st != null) params.status = st;
+
+  const companies = poQueryList(args.companyIds);
+  if (companies != null) params.companyIds = companies;
+
+  const cFrom = args.createdFrom ?? args.from;
+  const cTo = args.createdTo ?? args.to;
+  if (cFrom != null) params.createdFrom = String(cFrom);
+  if (cTo != null) params.createdTo = String(cTo);
+
+  if (args.startDateFrom != null) params.startDateFrom = String(args.startDateFrom);
+  if (args.startDateTo != null) params.startDateTo = String(args.startDateTo);
+  if (args.endDateFrom != null) params.endDateFrom = String(args.endDateFrom);
+  if (args.endDateTo != null) params.endDateTo = String(args.endDateTo);
+
   if (args.state != null) params.state = String(args.state);
-  if (args.supplierId != null) params.supplierId = String(args.supplierId);
   if (args.userId != null) params.userId = String(args.userId);
-
-  // Date filters are also sent in camelCase
-  if (args.from != null) params.from = String(args.from);
-  if (args.to != null) params.to = String(args.to);
-  if (args.createdFrom != null) params.createdFrom = String(args.createdFrom);
-  if (args.createdTo != null) params.createdTo = String(args.createdTo);
   if (args.updatedFrom != null) params.updatedFrom = String(args.updatedFrom);
   if (args.updatedTo != null) params.updatedTo = String(args.updatedTo);
 
   if (args.ids != null) {
-    if (Array.isArray(args.ids)) {
-      params.ids = args.ids.join(",");
-    } else {
-      params.ids = String(args.ids);
-    }
+    params.ids = Array.isArray(args.ids) ? args.ids.join(",") : String(args.ids);
   }
 
   if (args.filters) {
     for (const [key, value] of Object.entries(args.filters)) {
-      if (value != null && !params[key]) {
-        params[key] = String(value);
-      }
+      if (value == null || params[key] !== undefined) continue;
+      if (Array.isArray(value)) params[key] = value.map(String).join(",");
+      else params[key] = String(value);
     }
   }
 
@@ -618,10 +673,32 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.delete(SpendeskPaths.deleteWebhook(args.webhookId as string));
 
       case "spendesk_get_purchase_orders": {
-        const perPage = Math.min(100, Math.max(1, Number(args.perPage ?? 100)));
-        return fetchAllPages(api, SpendeskPaths.getPurchaseOrders, {}, {
+        const perPage = Math.min(30, Math.max(1, Number(args.perPage ?? 30)));
+        const query = buildPurchaseOrdersQueryParams(
+          args as {
+            withItems?: boolean;
+            supplierIds?: string | string[];
+            supplierId?: string;
+            status?: string | string[];
+            companyIds?: string | string[];
+            createdFrom?: string;
+            createdTo?: string;
+            startDateFrom?: string;
+            startDateTo?: string;
+            endDateFrom?: string;
+            endDateTo?: string;
+            from?: string;
+            to?: string;
+            state?: string;
+            userId?: string;
+            ids?: string | string[];
+            filters?: Record<string, unknown>;
+          }
+        );
+        return fetchAllPages(api, SpendeskPaths.getPurchaseOrders, query, {
           listKey: "purchaseOrders",
           requestedPerPage: perPage,
+          pageSizeParam: "pageSize",
         });
       }
       case "spendesk_create_purchase_order":
@@ -663,7 +740,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           api,
           SpendeskPaths.getPurchaseOrders,
           basePo,
-          { listKey: "purchaseOrders" }
+          { listKey: "purchaseOrders", pageSizeParam: "pageSize", requestedPerPage: 30 }
         );
         const { payables } = await fetchPayablesForPeriod(api, from, to);
         const bySupplierMap = new Map<
@@ -994,7 +1071,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_purchase_orders_and_payables_export", () =>
     mcp.tool(
       "spendesk_get_purchase_orders_and_payables_export",
-    "Use when the user asks for an export of all purchase orders created in a period with their associated payables. Returns POs and payables linked by supplier.",
+    "Use when the user asks for an export of all purchase orders created in a period with their associated payables. POs are listed via GET /v1/purchase-orders with createdFrom/createdTo; other list filters: https://developer.spendesk.com/reference/v1-get-purchase-orders — returns POs and payables linked by supplier.",
     {
       from: z.string().describe("Start date ISO (e.g. 2026-01-01)"),
       to: z.string().describe("End date ISO (e.g. 2026-03-31)"),
@@ -1490,18 +1567,16 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_purchase_orders", () =>
     mcp.tool(
       "spendesk_get_purchase_orders",
-    "Get all purchase orders from the API in one call. Fetches all pages in parallel and returns { data: purchaseOrders[], meta: { pagination: { total, pageSize } } }. Each PO is sanitized (minimal fields, no large arrays). Optional perPage: page size used when fetching (default 100, max 100).",
-    {
-      perPage: z.number().int().min(1).max(100).optional().describe("Items per page when fetching (default 100). All pages are fetched automatically."),
-    },
+    "List all purchase orders: GET /v1/purchase-orders with your filters, all pages fetched in parallel. Official filters & docs: https://developer.spendesk.com/reference/v1-get-purchase-orders — includes supplierIds, status (open|closed|cancelled), companyIds, createdFrom/createdTo, startDateFrom/startDateTo, endDateFrom/endDateTo, withItems; pagination uses pageSize (max 30). Returns { data, meta.pagination }. Each PO is sanitized.",
+      purchaseOrdersListSchema,
       async (args) => toContent(await run("spendesk_get_purchase_orders", args))
     )
   );
   maybeReg("spendesk_create_purchase_order", () =>
     mcp.tool(
       "spendesk_create_purchase_order",
-    "Create a purchase order.",
-    { payload: z.record(z.unknown()).describe("PO body") },
+    "Create a purchase order: POST /v1/purchase-orders. Schema: https://developer.spendesk.com/reference/v1-create-purchase-order (experimental:purchase-order:write). Related: get by id https://developer.spendesk.com/reference/v1-get-purchase-order — cancel https://developer.spendesk.com/reference/v1-cancel-purchase-order — close https://developer.spendesk.com/reference/v1-close-purchase-order",
+    { payload: z.record(z.unknown()).describe("PO body (see Spendesk docs)") },
       async (args) => toContent(await run("spendesk_create_purchase_order", args))
     )
   );
@@ -1510,7 +1585,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_api_reference", () =>
     mcp.tool(
       "spendesk_get_api_reference",
-    "Get the API reference: list of endpoints, HTTP methods, paths, parameters (query, path, body), and MCP tool names. Use when the user asks about API structure, available endpoints, parameters for a given endpoint, or how to use the Spendesk API. Optional: filter by mcpTool (e.g. spendesk_get_settlements) or path (e.g. settlements) to get only that endpoint.",
+    "Get the API reference: list of endpoints, HTTP methods, paths, parameters (query, path, body), MCP tool names, and documentation[] URLs to developer.spendesk.com where present. Use for API structure, filters (e.g. purchase orders list), or Spendesk docs links. Optional: filter by mcpTool or path.",
     {
       mcpTool: z.string().optional().describe("Filter to the endpoint exposed by this MCP tool (e.g. spendesk_get_settlements)"),
       path: z.string().optional().describe("Filter to endpoints whose path contains this string (e.g. settlements, payables)"),

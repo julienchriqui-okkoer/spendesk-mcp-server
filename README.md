@@ -389,13 +389,16 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_create_suppliers` – Création fournisseurs (POST `/v1/suppliers`, corps = tableau d’objets `supplierToCreate` ; scope `experimental:supplier:manage`)
 - `spendesk_update_supplier` / `spendesk_update_suppliers` / `spendesk_set_supplier_archive_status` – Mise à jour / archivage fournisseurs (PATCH)
 - **Démo cycle de vie** : `node scripts/demo-supplier-lifecycle.mjs` (création → mise à jour → archivage ; puis 2 fournisseurs même TVA, filtre `vatNumber`, archivage du plus récent). Nécessite client credentials avec `experimental:supplier:manage` et `SPENDESK_USE_DEMO=true` si trunk sandbox.
+- **Bulk suppliers (API directe)** : `node scripts/test-supplier-bulk-operations.mjs` — même flux que la collection Postman **`postman/Spendesk-Suppliers-Bulk.postman_collection.json`** (import + étapes : [`postman/README.md`](postman/README.md)).
+- **Fiche fournisseur complète (tous champs OpenAPI + analyse lecture/patch)** : `node scripts/test-supplier-full-attributes.mjs` — rapport et tableau attributs : [`docs/supplier-full-attributes.md`](docs/supplier-full-attributes.md).
+- **Purchase Orders (liste, détail, création, cancel, close)** : `node scripts/test-purchase-orders-api.mjs` — rapport : [`docs/purchase-orders-api-test.md`](docs/purchase-orders-api-test.md) ; Postman : [`postman/Spendesk-Purchase-Orders.postman_collection.json`](postman/Spendesk-Purchase-Orders.postman_collection.json) + [`postman/README.md`](postman/README.md).
 - `spendesk_get_users` / `spendesk_get_user` – Utilisateurs (avec filtres via `filters`)
 
 ### Webhooks
 - `spendesk_create_webhook` / `spendesk_get_webhooks` / `spendesk_get_webhook` / `spendesk_update_webhook` / `spendesk_delete_webhook` – Gestion des webhooks
 
 ### Purchase Orders
-- `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Commandes d'achat (avec filtres via `filters`)
+- `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Commandes d’achat. Liste : filtres alignés sur [Get Purchase Orders](https://developer.spendesk.com/reference/v1-get-purchase-orders) (`supplierIds`, `status`, `companyIds`, `createdFrom`/`createdTo`, `startDateFrom`/`startDateTo`, `endDateFrom`/`endDateTo`, `withItems`, `filters`). Création : [Create a purchase order](https://developer.spendesk.com/reference/v1-create-purchase-order). Autres endpoints documentés dans `spendesk_get_api_reference` : [Get by ID](https://developer.spendesk.com/reference/v1-get-purchase-order), [Cancel](https://developer.spendesk.com/reference/v1-cancel-purchase-order), [Close](https://developer.spendesk.com/reference/v1-close-purchase-order).
 
 ### Ephemeral SQLite (analyses SQL)
 - `spendesk_load_sqlite_data` – Charge un jeu (payables, settlements, suppliers, purchase_orders) dans une table SQLite en mémoire. Paramètres : `dataset`, `from_date`, `to_date` (obligatoires pour payables).
@@ -408,7 +411,7 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - **[Export wallet loads → NetSuite](docs/export-wallet-loads-to-netsuite.md)** — Journalisation des recharges wallet (virements bank → Spendesk) en écritures comptables NetSuite, une JE par load, avec idempotence et option `WALLET_LOAD_AMOUNT_UNIT` (cents vs EUR).
 
 ### Découverte / Référence API
-- `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`) pour filtrer sur un seul endpoint.
+- `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé, et champs **`documentation`** (liens [developer.spendesk.com](https://developer.spendesk.com/reference/general)) quand disponibles. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « filtres purchase orders », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`, `purchase-orders`) pour filtrer.
 
 Les outils qui listent des éléments (settlements, suppliers, purchase orders, bank fees, wallet loads, etc.) acceptent une pagination explicite **`page`** (défaut 1) et **`perPage`**. Selon l’endpoint, le serveur mappe automatiquement vers le paramètre API attendu (`perPage` ou `pageSize`, ex. suppliers). Ils acceptent aussi des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`). `spendesk_get_payables_snapshot` supporte également `page` et `perPage` pour paginer les payables d’un snapshot (ex. 1 177 payables sur ~40 pages à 30/page).
 

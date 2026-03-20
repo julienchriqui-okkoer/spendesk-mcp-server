@@ -18,7 +18,7 @@ export function createMcpServer(api: SpendeskClient): McpServer {
         "This server exposes the Spendesk Public API for ERP integrations and dashboards.",
         "Use tools to list/update settlements, payables, suppliers, users, cost centers, accounting exports, webhooks, and purchase orders.",
         "Use resources to read snapshot data (e.g. spendesk://settlements, spendesk://suppliers) for dashboards.",
-        "When the user asks about API structure, endpoints, parameters, or how to use the Spendesk API, use the tool spendesk_get_api_reference or the resource spendesk://api-reference to return the list of endpoints, HTTP methods, paths, and parameters (query, path, body).",
+        "When the user asks about API structure, endpoints, parameters, purchase order filters, or Spendesk docs links, use spendesk_get_api_reference or spendesk://api-reference — entries include a documentation[] array of developer.spendesk.com URLs when available.",
       ].join(" "),
     }
   );

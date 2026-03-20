@@ -21,6 +21,8 @@ export type EndpointSpec = {
   path: string;
   mcpTool?: string;
   description: string;
+  /** Official Spendesk Public API docs (developer.spendesk.com). */
+  documentation?: string[];
   queryParams?: ParamSpec[];
   pathParams?: ParamSpec[];
   bodyParams?: ParamSpec[];
@@ -206,10 +208,12 @@ export const API_REFERENCE = {
       method: "MCP",
       path: "(aggregated from purchase-orders + payables)",
       mcpTool: "spendesk_get_purchase_orders_and_payables_export",
-      description: "Export purchase orders and payables for a period, linked by supplier.",
+      description:
+        "Export purchase orders and payables for a period, linked by supplier. PO list uses GET /v1/purchase-orders with createdFrom/createdTo (from/to args).",
+      documentation: ["https://developer.spendesk.com/reference/v1-get-purchase-orders"],
       queryParams: [
-        { name: "from", type: "string", required: true, description: "Start date ISO" },
-        { name: "to", type: "string", required: true, description: "End date ISO" },
+        { name: "from", type: "string", required: true, description: "Start date YYYY-MM-DD → PO createdFrom" },
+        { name: "to", type: "string", required: true, description: "End date YYYY-MM-DD → PO createdTo" },
       ],
     },
     // —— Analytical ————————————————————————————————————————————————————————
@@ -419,9 +423,99 @@ export const API_REFERENCE = {
       method: "GET",
       path: "/v1/purchase-orders",
       mcpTool: "spendesk_get_purchase_orders",
-      description: "Get all purchase orders in one call (all pages fetched in parallel). Returns { data, meta: { pagination: { total, pageSize } } }. Each PO is sanitized.",
+      description:
+        "List purchase orders; the MCP tool fetches all pages in parallel. API uses query param pageSize (max 30). Returns { data, meta: { pagination } }. Each PO is sanitized.",
+      documentation: ["https://developer.spendesk.com/reference/v1-get-purchase-orders"],
       queryParams: [
-        { name: "perPage", type: "number", required: false, description: "Page size when fetching (default 100, max 100)" },
+        { name: "page", type: "number", required: false, description: "Page number (1-based); managed automatically when fetching all pages", apiKey: "page" },
+        {
+          name: "perPage",
+          type: "number",
+          required: false,
+          description: "Items per request; sent to the API as pageSize (default 30, max 30)",
+          apiKey: "pageSize",
+        },
+        {
+          name: "withItems",
+          type: "boolean",
+          required: false,
+          description: "Include line items in each PO in the list response",
+        },
+        {
+          name: "supplierIds",
+          type: "string | string[]",
+          required: false,
+          description: "Filter by supplier ID(s); comma-separated or array (merged to comma-separated)",
+        },
+        {
+          name: "status",
+          type: "string | string[]",
+          required: false,
+          description: "Filter by PO status: open, closed, cancelled (string or array)",
+        },
+        {
+          name: "companyIds",
+          type: "string | string[]",
+          required: false,
+          description: "Filter by company ID(s)",
+        },
+        {
+          name: "createdFrom",
+          type: "string",
+          required: false,
+          description: "PO creation from date YYYY-MM-DD",
+        },
+        {
+          name: "createdTo",
+          type: "string",
+          required: false,
+          description: "PO creation until date YYYY-MM-DD",
+        },
+        {
+          name: "startDateFrom",
+          type: "string",
+          required: false,
+          description: "PO start date from YYYY-MM-DD",
+        },
+        {
+          name: "startDateTo",
+          type: "string",
+          required: false,
+          description: "PO start date until YYYY-MM-DD",
+        },
+        {
+          name: "endDateFrom",
+          type: "string",
+          required: false,
+          description: "PO end date from YYYY-MM-DD",
+        },
+        {
+          name: "endDateTo",
+          type: "string",
+          required: false,
+          description: "PO end date until YYYY-MM-DD",
+        },
+        { name: "supplierId", type: "string", required: false, description: "MCP alias: single supplier → supplierIds" },
+        { name: "from", type: "string", required: false, description: "MCP alias for createdFrom (YYYY-MM-DD)" },
+        { name: "to", type: "string", required: false, description: "MCP alias for createdTo (YYYY-MM-DD)" },
+        {
+          name: "filters",
+          type: "object",
+          required: false,
+          description: "Extra query keys forwarded to the API (camelCase as per Public API)",
+        },
+      ],
+    },
+    {
+      method: "GET",
+      path: "/v1/purchase-orders/:purchaseOrderId",
+      description: "Get one purchase order by ID. Not exposed as a dedicated MCP tool; call the Public API or use list + filter.",
+      documentation: ["https://developer.spendesk.com/reference/v1-get-purchase-order"],
+      pathParams: [
+        { name: "purchaseOrderId", type: "string", required: true, description: "Purchase order ID" },
+      ],
+      queryParams: [
+        { name: "withItems", type: "boolean", required: false, description: "Include line items" },
       ],
     },
     {
@@ -429,7 +523,32 @@ export const API_REFERENCE = {
       path: "/v1/purchase-orders",
       mcpTool: "spendesk_create_purchase_order",
       description: "Create a purchase order.",
+      documentation: ["https://developer.spendesk.com/reference/v1-create-purchase-order"],
       bodyParams: [{ name: "payload", type: "object", required: true, description: "PO body" }],
+    },
+    {
+      method: "POST",
+      path: "/v1/purchase-orders/:purchaseOrderId/cancel",
+      description: "Cancel a purchase order. Not exposed as an MCP tool; see Public API.",
+      documentation: ["https://developer.spendesk.com/reference/v1-cancel-purchase-order"],
+      pathParams: [
+        { name: "purchaseOrderId", type: "string", required: true, description: "Purchase order ID" },
+      ],
+      queryParams: [
+        { name: "withItems", type: "boolean", required: false, description: "Include line items in the response" },
+      ],
+    },
+    {
+      method: "POST",
+      path: "/v1/purchase-orders/:purchaseOrderId/close",
+      description: "Close a purchase order. Not exposed as an MCP tool; see Public API.",
+      documentation: ["https://developer.spendesk.com/reference/v1-close-purchase-order"],
+      pathParams: [
+        { name: "purchaseOrderId", type: "string", required: true, description: "Purchase order ID" },
+      ],
+      queryParams: [
+        { name: "withItems", type: "boolean", required: false, description: "Include line items in the response" },
+      ],
     },
   ] as EndpointSpec[],
 

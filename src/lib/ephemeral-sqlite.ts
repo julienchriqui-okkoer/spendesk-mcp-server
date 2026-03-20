@@ -309,7 +309,11 @@ export async function loadDataset(
     const params: Record<string, string> = {};
     if (from) params.createdFrom = from;
     if (to) params.createdTo = to;
-    const { data } = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, params, { listKey: "purchaseOrders" });
+    const { data } = await fetchAllPages(api, SpendeskPaths.getPurchaseOrders, params, {
+      listKey: "purchaseOrders",
+      pageSizeParam: "pageSize",
+      requestedPerPage: 30,
+    });
     const list = Array.isArray(data) ? data : [];
     db.exec("DROP TABLE IF EXISTS purchase_orders;");
     db.exec(purchaseOrdersTableSchema());
