@@ -47,6 +47,43 @@ const listSchema = {
   filters: filtersSchema,
 };
 
+const supplierFilterSchema = z
+  .object({
+    ids: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe("Filter by supplier ID(s). Can be a single ID string or array of IDs."),
+    updatedBefore: z.string().optional().describe("Only suppliers updated before this datetime (ISO 8601)."),
+    updatedAfter: z.string().optional().describe("Only suppliers updated after this datetime (ISO 8601)."),
+    createdBefore: z.string().optional().describe("Only suppliers created before this datetime (ISO 8601)."),
+    createdAfter: z.string().optional().describe("Only suppliers created after this datetime (ISO 8601)."),
+    bankCountry: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .optional()
+      .describe("Filter by bank country (ISO alpha-2, e.g. FR, DE, GB)."),
+    iban: z.string().optional().describe("Filter by supplier IBAN."),
+    vatNumber: z.string().optional().describe("Filter by supplier VAT number."),
+    isArchived: z
+      .boolean()
+      .optional()
+      .describe("Filter archived suppliers: true = archived only, false = active only."),
+  })
+  .optional();
+
+const suppliersSchema = {
+  page: z.number().int().min(1).optional().describe("Page number (1-based)"),
+  perPage: z
+    .number()
+    .int()
+    .min(1)
+    .max(30)
+    .optional()
+    .describe("Items per page (mapped to API pageSize, max 30 for suppliers endpoint)."),
+  filters: filtersSchema,
+  supplierFilters: supplierFilterSchema.describe("Dedicated suppliers filters (merged with filters)."),
+};
+
 // Bank fees: date filters to avoid loading all fees (e.g. daily agent needs only yesterday)
 const bankFeesSchema = {
   ...paginationSchema,
@@ -268,6 +305,56 @@ function buildPurchaseOrdersQueryParams(args: {
 }
 
 /**
+ * Build query params for suppliers list.
+ * Spendesk expects pageSize (not perPage) and supports dedicated supplier filters.
+ */
+function buildSuppliersQueryParams(args: {
+  page?: number;
+  perPage?: number;
+  filters?: Record<string, unknown>;
+  supplierFilters?: {
+    ids?: string | string[];
+    updatedBefore?: string;
+    updatedAfter?: string;
+    createdBefore?: string;
+    createdAfter?: string;
+    bankCountry?: string;
+    iban?: string;
+    vatNumber?: string;
+    isArchived?: boolean;
+  };
+}): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (args.page != null) params.page = String(args.page);
+  if (args.perPage != null) params.pageSize = String(args.perPage);
+
+  const sf = args.supplierFilters;
+  if (sf) {
+    if (sf.ids != null) {
+      params.ids = Array.isArray(sf.ids) ? sf.ids.join(",") : String(sf.ids);
+    }
+    if (sf.updatedBefore != null) params.updatedBefore = String(sf.updatedBefore);
+    if (sf.updatedAfter != null) params.updatedAfter = String(sf.updatedAfter);
+    if (sf.createdBefore != null) params.createdBefore = String(sf.createdBefore);
+    if (sf.createdAfter != null) params.createdAfter = String(sf.createdAfter);
+    if (sf.bankCountry != null) params.bankCountry = String(sf.bankCountry);
+    if (sf.iban != null) params.iban = String(sf.iban);
+    if (sf.vatNumber != null) params.vatNumber = String(sf.vatNumber);
+    if (sf.isArchived != null) params.isArchived = String(sf.isArchived);
+  }
+
+  if (args.filters) {
+    for (const [key, value] of Object.entries(args.filters)) {
+      if (value != null && params[key] === undefined) {
+        params[key] = String(value);
+      }
+    }
+  }
+
+  return params;
+}
+
+/**
  * Build request body for create payables snapshot (Public API).
  *
  * The Public API snapshot endpoint expects a **flat JSON body** whose fields
@@ -475,18 +562,42 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.get(SpendeskPaths.getJournalTemplates);
 
       case "spendesk_get_suppliers": {
-        const supplierParams = buildQueryParams(args as {
+        const supplierParams = buildSuppliersQueryParams(args as {
           page?: number;
           perPage?: number;
           filters?: Record<string, unknown>;
+          supplierFilters?: {
+            ids?: string | string[];
+            updatedBefore?: string;
+            updatedAfter?: string;
+            createdBefore?: string;
+            createdAfter?: string;
+            bankCountry?: string;
+            iban?: string;
+            vatNumber?: string;
+            isArchived?: boolean;
+          };
         });
-        const { page: _p2, perPage: _pp2, ...baseSupplier } = supplierParams;
+        const { page: _p2, pageSize: _ps2, ...baseSupplier } = supplierParams;
+        const requestedPerPage = Math.min(30, Math.max(1, Number((args as { perPage?: number }).perPage ?? 30)));
         return fetchAllPages(api, SpendeskPaths.getSuppliers, baseSupplier, {
           listKey: "suppliers",
+          requestedPerPage,
+          pageSizeParam: "pageSize",
         });
       }
       case "spendesk_get_supplier":
         return api.get(SpendeskPaths.getSupplierById(args.supplierId as string));
+      case "spendesk_create_suppliers":
+        return api.post(SpendeskPaths.createSuppliers, args.payload);
+      case "spendesk_update_supplier":
+        return api.patch(SpendeskPaths.updateSupplier(args.supplierId as string), args.payload);
+      case "spendesk_update_suppliers":
+        return api.patch(SpendeskPaths.updateSuppliers, args.payload);
+      case "spendesk_set_supplier_archive_status":
+        return api.patch(SpendeskPaths.updateSupplierArchiveStatus(args.supplierId as string), {
+          isArchived: args.isArchived,
+        });
       case "spendesk_get_users":
         return api.get(
           SpendeskPaths.getUsers,
@@ -1253,8 +1364,8 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_suppliers", () =>
     mcp.tool(
       "spendesk_get_suppliers",
-    "Get full suppliers list (all pages). Uses API pageSize for pagination like composite tools. Params: 'filters' for any API query (camelCase). Returns { data: [...], meta: { pagination: { total, pageSize } } }. For top suppliers by spend prefer spendesk_analyze_spend.",
-    listSchema,
+    "Get full suppliers list (all pages). Supports dedicated supplier filters (ids, updatedBefore/After, createdBefore/After, bankCountry, iban, vatNumber, isArchived) and generic filters fallback. Returns { data: [...], meta: { pagination: { total, pageSize } } }. For top suppliers by spend prefer spendesk_analyze_spend.",
+    suppliersSchema,
       async (args) => toContent(await run("spendesk_get_suppliers", args))
     )
   );
@@ -1264,6 +1375,56 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     "Get a supplier by ID.",
     { supplierId: z.string() },
       async (args) => toContent(await run("spendesk_get_supplier", args))
+    )
+  );
+  maybeReg("spendesk_create_suppliers", () =>
+    mcp.tool(
+      "spendesk_create_suppliers",
+    "Create one or more suppliers (POST /v1/suppliers). Body must be an array of supplier objects (Public API supplierToCreate: name, supplierDetails.legalName required; optional primaryEmail, supplierDetails.vatNumber, bankInfo, etc.). Requires experimental:supplier:manage.",
+    {
+      payload: z
+        .array(z.record(z.unknown()))
+        .min(1)
+        .max(100)
+        .describe("Array of suppliers to create (1–100 items)."),
+    },
+      async (args) => toContent(await run("spendesk_create_suppliers", args))
+    )
+  );
+  maybeReg("spendesk_update_supplier", () =>
+    mcp.tool(
+      "spendesk_update_supplier",
+    "Update a single supplier by ID (PATCH /v1/suppliers/:id). Requires supplier manage scope.",
+    {
+      supplierId: z.string().describe("Supplier ID"),
+      payload: z.record(z.unknown()).describe("Supplier fields to update (name, primaryEmail, supplierDetails, bankInfo)."),
+    },
+      async (args) => toContent(await run("spendesk_update_supplier", args))
+    )
+  );
+  maybeReg("spendesk_update_suppliers", () =>
+    mcp.tool(
+      "spendesk_update_suppliers",
+    "Bulk update suppliers (PATCH /v1/suppliers). Send an array of supplier updates (min 2 items, each with id).",
+    {
+      payload: z
+        .array(z.record(z.unknown()))
+        .min(2)
+        .max(100)
+        .describe("Array of supplier update objects. Each object must include an `id`."),
+    },
+      async (args) => toContent(await run("spendesk_update_suppliers", args))
+    )
+  );
+  maybeReg("spendesk_set_supplier_archive_status", () =>
+    mcp.tool(
+      "spendesk_set_supplier_archive_status",
+    "Archive or unarchive one supplier (PATCH /v1/experimental/suppliers/:id/status).",
+    {
+      supplierId: z.string().describe("Supplier ID"),
+      isArchived: z.boolean().describe("true to archive, false to unarchive."),
+    },
+      async (args) => toContent(await run("spendesk_set_supplier_archive_status", args))
     )
   );
   maybeReg("spendesk_get_users", () =>

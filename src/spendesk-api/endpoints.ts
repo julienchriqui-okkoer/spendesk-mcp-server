@@ -47,7 +47,12 @@ export const SpendeskPaths = {
 
   // Suppliers and Users
   getSuppliers: `${V1}/suppliers`,
+  /** POST /v1/suppliers — create one or more suppliers (same path as list). */
+  createSuppliers: `${V1}/suppliers`,
   getSupplierById: (id: string) => `${V1}/suppliers/${id}`,
+  updateSupplier: (id: string) => `${V1}/suppliers/${id}`,
+  updateSuppliers: `${V1}/suppliers`,
+  updateSupplierArchiveStatus: (id: string) => `${V1}/experimental/suppliers/${id}/status`,
   getUsers: `${V1}/users`,
   getUserById: (id: string) => `${V1}/users/${id}`,
 

@@ -60,15 +60,17 @@ export async function fetchAllPages(
   options?: {
     listKey?: "settlements" | "suppliers" | "purchaseOrders";
     requestedPerPage?: number;
+    pageSizeParam?: "perPage" | "pageSize";
   }
 ): Promise<{ data: unknown[]; meta: { pagination: { total: number; pageSize: number } } }> {
   const perPage = options?.requestedPerPage ?? DEFAULT_PAGE_SIZE;
   const listKey = options?.listKey;
+  const pageSizeParam = options?.pageSizeParam ?? "perPage";
 
   const firstRes = await api.get<ListResponse>(path, {
     ...baseParams,
     page: "1",
-    perPage: String(perPage),
+    [pageSizeParam]: String(perPage),
   });
 
   const { list, total, pageSize } = extractListAndPagination(firstRes, listKey);
@@ -95,7 +97,7 @@ export async function fetchAllPages(
       const res = await api.get<ListResponse>(path, {
         ...baseParams,
         page: String(page),
-        perPage: String(perPage),
+        [pageSizeParam]: String(perPage),
       });
       const { list: pageList } = extractListAndPagination(res, listKey);
       results[page - 1] = Array.isArray(pageList) ? pageList : [];

@@ -17,7 +17,7 @@ export type ParamSpec = {
 };
 
 export type EndpointSpec = {
-  method: "GET" | "POST" | "PUT" | "DELETE" | "MCP";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "MCP";
   path: string;
   mcpTool?: string;
   description: string;
@@ -310,8 +310,17 @@ export const API_REFERENCE = {
       description: "List suppliers (vendors).",
       queryParams: [
         { name: "page", type: "number", required: false, apiKey: "page", description: "Page" },
-        { name: "perPage", type: "number", required: false, apiKey: "per_page", description: "Per page" },
-        { name: "filters", type: "object", required: false, description: "Additional params" },
+        { name: "perPage", type: "number", required: false, apiKey: "pageSize", description: "Page size (max 30)" },
+        { name: "ids", type: "string | string[]", required: false, description: "Filter by supplier IDs" },
+        { name: "updatedBefore", type: "string", required: false, description: "Filter by update datetime upper bound (ISO 8601)" },
+        { name: "updatedAfter", type: "string", required: false, description: "Filter by update datetime lower bound (ISO 8601)" },
+        { name: "createdBefore", type: "string", required: false, description: "Filter by creation datetime upper bound (ISO 8601)" },
+        { name: "createdAfter", type: "string", required: false, description: "Filter by creation datetime lower bound (ISO 8601)" },
+        { name: "bankCountry", type: "string", required: false, description: "Filter by bank country ISO alpha-2 (e.g. FR)" },
+        { name: "iban", type: "string", required: false, description: "Filter by supplier IBAN" },
+        { name: "vatNumber", type: "string", required: false, description: "Filter by supplier VAT number" },
+        { name: "isArchived", type: "boolean", required: false, description: "true = archived suppliers only, false = active suppliers only" },
+        { name: "filters", type: "object", required: false, description: "Additional query params (generic fallback)" },
       ],
     },
     {
@@ -320,6 +329,36 @@ export const API_REFERENCE = {
       mcpTool: "spendesk_get_supplier",
       description: "Get a supplier by ID.",
       pathParams: [{ name: "supplierId", type: "string", required: true, description: "Supplier ID" }],
+    },
+    {
+      method: "POST",
+      path: "/v1/suppliers",
+      mcpTool: "spendesk_create_suppliers",
+      description: "Create one or more suppliers. Body: array of supplierToCreate (name, supplierDetails with legalName required).",
+      bodyParams: [{ name: "payload", type: "array<object>", required: true, description: "Array of suppliers to create (1–100)" }],
+    },
+    {
+      method: "PATCH",
+      path: "/v1/suppliers/:id",
+      mcpTool: "spendesk_update_supplier",
+      description: "Update a single supplier by ID.",
+      pathParams: [{ name: "supplierId", type: "string", required: true, description: "Supplier ID" }],
+      bodyParams: [{ name: "payload", type: "object", required: true, description: "Supplier fields to update" }],
+    },
+    {
+      method: "PATCH",
+      path: "/v1/suppliers",
+      mcpTool: "spendesk_update_suppliers",
+      description: "Bulk update suppliers (2 to 100 items).",
+      bodyParams: [{ name: "payload", type: "array<object>", required: true, description: "Array of supplier update objects, each with id" }],
+    },
+    {
+      method: "PATCH",
+      path: "/v1/experimental/suppliers/:id/status",
+      mcpTool: "spendesk_set_supplier_archive_status",
+      description: "Archive or unarchive a supplier by ID.",
+      pathParams: [{ name: "supplierId", type: "string", required: true, description: "Supplier ID" }],
+      bodyParams: [{ name: "isArchived", type: "boolean", required: true, description: "true to archive, false to unarchive" }],
     },
     {
       method: "GET",

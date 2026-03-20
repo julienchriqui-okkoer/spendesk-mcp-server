@@ -385,7 +385,10 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_get_journal_templates` – Modèles de journaux
 
 ### Suppliers & Users
-- `spendesk_get_suppliers` / `spendesk_get_supplier` – Fournisseurs (avec filtres via `filters`)
+- `spendesk_get_suppliers` / `spendesk_get_supplier` – Fournisseurs (filtres dédiés : `ids`, `updatedBefore/After`, `createdBefore/After`, `bankCountry`, `iban`, `vatNumber`, `isArchived`, + `filters` générique)
+- `spendesk_create_suppliers` – Création fournisseurs (POST `/v1/suppliers`, corps = tableau d’objets `supplierToCreate` ; scope `experimental:supplier:manage`)
+- `spendesk_update_supplier` / `spendesk_update_suppliers` / `spendesk_set_supplier_archive_status` – Mise à jour / archivage fournisseurs (PATCH)
+- **Démo cycle de vie** : `node scripts/demo-supplier-lifecycle.mjs` (création → mise à jour → archivage ; puis 2 fournisseurs même TVA, filtre `vatNumber`, archivage du plus récent). Nécessite client credentials avec `experimental:supplier:manage` et `SPENDESK_USE_DEMO=true` si trunk sandbox.
 - `spendesk_get_users` / `spendesk_get_user` – Utilisateurs (avec filtres via `filters`)
 
 ### Webhooks
@@ -407,7 +410,7 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 ### Découverte / Référence API
 - `spendesk_get_api_reference` – Retourne la **référence de l’API** : liste des endpoints (méthode HTTP, path), paramètres (query, path, body), nom de l’outil MCP associé. Utiliser quand on demande « quels sont les endpoints ? », « quels paramètres pour les settlements ? », « structure de l’API ». Optionnel : `mcpTool` (ex. `spendesk_get_settlements`) ou `path` (ex. `payables`) pour filtrer sur un seul endpoint.
 
-Les outils qui listent des éléments (settlements, suppliers, purchase orders, bank fees, wallet loads, etc.) acceptent une pagination explicite **`page`** (défaut 1) et **`perPage`** (défaut 30, max 100), envoyée à l’API en camelCase. Ils acceptent aussi des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`). `spendesk_get_payables_snapshot` supporte également `page` et `perPage` pour paginer les payables d’un snapshot (ex. 1 177 payables sur ~40 pages à 30/page).
+Les outils qui listent des éléments (settlements, suppliers, purchase orders, bank fees, wallet loads, etc.) acceptent une pagination explicite **`page`** (défaut 1) et **`perPage`**. Selon l’endpoint, le serveur mappe automatiquement vers le paramètre API attendu (`perPage` ou `pageSize`, ex. suppliers). Ils acceptent aussi des **filtres génériques** via le paramètre `filters` (objet avec n'importe quels query parameters de l'API Spendesk, ex. : `{ from: '2024-01-01', to: '2024-12-31', state: 'completed' }`). `spendesk_get_payables_snapshot` supporte également `page` et `perPage` pour paginer les payables d’un snapshot (ex. 1 177 payables sur ~40 pages à 30/page).
 
 ## Réponses clés en main (Claude / Dust)
 

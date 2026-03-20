@@ -172,6 +172,10 @@ export const TOOL_CATEGORY: Record<string, UsageCategory> = {
   spendesk_execute_sql_query: "reference_data",
   spendesk_list_loaded_tables: "reference_data",
   spendesk_clear_sqlite_tables: "reference_data",
+  spendesk_update_supplier: "reference_data",
+  spendesk_update_suppliers: "reference_data",
+  spendesk_set_supplier_archive_status: "reference_data",
+  spendesk_create_suppliers: "reference_data",
   // Fallback categories for other tools can be added over time.
 };
 
