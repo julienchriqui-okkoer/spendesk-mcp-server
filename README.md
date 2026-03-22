@@ -272,6 +272,22 @@ Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Res
 
 Le client envoie d'abord une requête POST avec le body JSON-RPC `initialize`, récupère le `mcp-session-id` dans les en-têtes de la réponse, puis réutilise ce session ID pour les requêtes suivantes et pour le flux GET SSE.
 
+#### Dust (app.dust.tt) — la connexion liste les outils mais les appels Spendesk échouent
+
+Checklist fréquente :
+
+1. **Sandbox vs prod (cause n°1)** : les `client_id` / `client_secret` **trunk / sandbox** doivent parler à `beta-sandbox.api.trunk.spendesk.services`. Sur **Railway**, si `SPENDESK_USE_DEMO` est absent ou `false`, le serveur utilisait jusqu’ici **public-api.spendesk.com** même quand Dust envoyait des identifiants sandbox → token ou appels API invalides. **Corriger par une des deux options :**
+   - **A.** Variables Railway : `SPENDESK_USE_DEMO=true` (et éventuellement `SPENDESK_BASE_URL` si tu utilises une autre URL de démo), **ou**
+   - **B.** Dans Dust → **Networking & Headers**, ajouter un 3ᵉ header : **`X-Spendesk-Use-Demo`** = `true` (ou `1`). Ainsi la session MCP utilise l’hôte sandbox pour le flux OAuth et les outils, **sans** changer le reste du déploiement.
+
+2. **Bearer vide** : tu peux laisser le champ **Bearer Token** vide si tu utilises **`X-Spendesk-Client-Id`** + **`X-Spendesk-Client-Secret`**. Ne mets pas un espace ou un faux token.
+
+3. **Scopes Spendesk** : pour `spendesk_get_suppliers`, l’application OAuth doit avoir au minimum **`supplier:read`** (et **`experimental:supplier:manage`** pour création / archive). Vérifie dans Spendesk *Paramètres → Intégrations → Gestion d’accès API*.
+
+4. **Test léger** : demander à l’assistant d’appeler **`spendesk_get_filter_options`** ou **`spendesk_get_wallet_summary`** ; si ça passe mais pas les suppliers, c’est presque sûrement un souci de **scope** ou d’**URL d’API** (point 1).
+
+5. **Synchroniser** : après changement d’URL ou de variables Railway, clique **Sync** sur l’outil MCP dans Dust puis réessaie.
+
 #### Tester le MCP déployé (ou local)
 
 Un script vérifie que le serveur HTTP répond correctement (GET /, initialize, tools/list, tools/call) :

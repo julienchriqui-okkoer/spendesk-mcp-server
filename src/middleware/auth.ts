@@ -2,6 +2,7 @@
  * Authentication middleware for Spendesk API credentials.
  * Supports:
  * - Client credentials from client (Dust/Claude): Bearer "client_credentials:<base64(client_id:client_secret)>" or headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret
+ * - Optional: X-Spendesk-Use-Demo: true | 1 — force sandbox/trunk API host for this session when using client credentials (required if Railway has SPENDESK_USE_DEMO=false but credentials are sandbox).
  * - Direct Spendesk API token: Authorization: Bearer <apiToken> (used as-is, no database lookup)
  * If none present, the server falls back to environment credentials in buildApi.
  */
@@ -20,6 +21,8 @@ declare global {
       clientToken?: string;
       /** When set, use POST /v1/auth/token with these credentials (no DB lookup). */
       clientCredentials?: ClientCredentials;
+      /** From X-Spendesk-Use-Demo on initialize; overrides server env for API base URL with client credentials. */
+      spendeskUseDemoHint?: boolean;
     }
   }
 }
@@ -57,6 +60,21 @@ function getClientCredentialsFromHeaders(req: Request): ClientCredentials | null
   return { clientId: id, clientSecret: secret };
 }
 
+/** X-Spendesk-Use-Demo: true | 1 | false | 0 — when client sends OAuth credentials, align API host with sandbox vs prod. */
+function parseSpendeskUseDemoHint(req: Request): boolean | undefined {
+  const raw = (req.headers["x-spendesk-use-demo"] as string)?.trim().toLowerCase();
+  if (raw === "true" || raw === "1") return true;
+  if (raw === "false" || raw === "0") return false;
+  return undefined;
+}
+
+function attachUseDemoHintIfCredentials(req: Request): void {
+  const hint = parseSpendeskUseDemoHint(req);
+  if (hint !== undefined && (req.clientCredentials || req.clientToken)) {
+    req.spendeskUseDemoHint = hint;
+  }
+}
+
 /**
  * Middleware to authenticate client.
  * Priority:
@@ -72,18 +90,21 @@ export function authenticateClient(req: Request, res: Response, next: NextFuncti
     const cc = parseClientCredentialsFromBearer(token);
     if (cc) {
       req.clientCredentials = cc;
+      attachUseDemoHintIfCredentials(req);
       return next();
     }
 
     // Not client_credentials: treat as direct Spendesk API token
     if (token) {
       req.clientToken = token;
+      attachUseDemoHintIfCredentials(req);
       return next();
     }
   }
   const ccHeaders = getClientCredentialsFromHeaders(req);
   if (ccHeaders) {
     req.clientCredentials = ccHeaders;
+    attachUseDemoHintIfCredentials(req);
     return next();
   }
 

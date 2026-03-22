@@ -68,8 +68,14 @@ function getFallbackClientCredentials(baseUrl: string, useDemo: boolean): Client
 // Extended session store with client token support
 const sessionStore = new SessionStore();
 
-function buildApi(clientToken?: string, clientCredentials?: ClientCredentials): SpendeskClient {
-  const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+function buildApi(
+  clientToken?: string,
+  clientCredentials?: ClientCredentials,
+  /** From X-Spendesk-Use-Demo on the initialize request (Dust / multi-tenant). */
+  useDemoClientHint?: boolean
+): SpendeskClient {
+  const useDemoFromEnv = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+  const useDemo = useDemoClientHint !== undefined ? useDemoClientHint : useDemoFromEnv;
   const baseUrl =
     process.env.SPENDESK_BASE_URL ||
     (useDemo ? "https://beta-sandbox.api.trunk.spendesk.services" : "https://public-api.spendesk.com");
@@ -342,7 +348,7 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
           },
         });
 
-        const api = buildApi(clientToken, clientCredentials);
+        const api = buildApi(clientToken, clientCredentials, req.spendeskUseDemoHint);
         const mcp = createMcpServer(api);
         await mcp.connect(transport);
         await transport.handleRequest(req, res, req.body);
