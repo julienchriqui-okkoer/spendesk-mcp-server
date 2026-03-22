@@ -37,3 +37,5 @@ npm-debug.log*
 # Rapport local QA (généré par scripts/test-supplier-full-attributes.mjs)
 supplier-full-attributes-report.json
 purchase-orders-api-test-report.json
+suppliers-archive-cycle-report.json
+mcp-*-report.json

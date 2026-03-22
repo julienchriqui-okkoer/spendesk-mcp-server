@@ -127,6 +127,16 @@ export class SpendeskClient {
       if (Array.isArray(list) && target) {
         target[key] = list.map((po: unknown) => sanitizePurchaseOrder(po));
       }
+      // Single PO: GET /v1/purchase-orders/:id → { data: { ... } }
+      const single = d.data;
+      if (
+        single &&
+        typeof single === "object" &&
+        !Array.isArray(single) &&
+        (single as Record<string, unknown>).id != null
+      ) {
+        d.data = sanitizePurchaseOrder(single);
+      }
     }
     if (res.status === 401 && this.on401Refresh && !is401Retry) {
       await this.on401Refresh();

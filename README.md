@@ -8,7 +8,7 @@ Serveur [MCP](https://modelcontextprotocol.io/) qui expose l'[API publique Spend
 ## Prérequis
 
 - Node.js ≥ 18
-- Un **token d'accès** Spendesk (Bearer). Création des identifiants API : *Paramètres > Intégrations > Gestion d'accès API* (compte Premium/Enterprise, statut Account Owner).
+- Des **identifiants OAuth2 client** Spendesk (client id + client secret), créés dans *Paramètres > Intégrations > Gestion d'accès API* (compte Premium/Enterprise, statut Account Owner).
 
 ## Installation
 
@@ -23,27 +23,26 @@ Variables d'environnement :
 
 | Variable | Obligatoire | Description |
 |----------|--------------|-------------|
-| `SPENDESK_API_TOKEN` | Recommandé | Token Bearer (OAuth2 ou identifiants API) utilisé par défaut quand le client ne fournit pas de credentials explicites. **Ne pas commiter.** |
 | `SPENDESK_USE_DEMO` | Non | `true` ou `1` : utilise l’API **démo** (URL sandbox + `SPENDESK_CLIENT_ID_DEMO` / `SPENDESK_CLIENT_SECRET_DEMO`). Sinon : prod (URL publique + `SPENDESK_CLIENT_ID` / `SPENDESK_CLIENT_SECRET`). |
-| `SPENDESK_CLIENT_ID` | Non | Client ID Spendesk (prod). Utilisé en fallback quand le client n’envoie pas de credentials et `SPENDESK_USE_DEMO` est faux. |
-| `SPENDESK_CLIENT_SECRET` | Non | Client secret Spendesk (prod). À définir avec `SPENDESK_CLIENT_ID` pour le fallback prod. |
-| `SPENDESK_CLIENT_ID_DEMO` | Non | Client ID Spendesk **démo**. Utilisé en fallback quand `SPENDESK_USE_DEMO=true`. |
-| `SPENDESK_CLIENT_SECRET_DEMO` | Non | Client secret Spendesk **démo**. À définir avec `SPENDESK_CLIENT_ID_DEMO` pour le fallback démo. |
+| `SPENDESK_CLIENT_ID` | Oui* | Client ID Spendesk (prod). *Requis pour **stdio** ; pour HTTP, requis sauf si chaque client envoie `Bearer client_credentials` ou les headers Spendesk. |
+| `SPENDESK_CLIENT_SECRET` | Oui* | Client secret Spendesk (prod). **Ne pas commiter.** |
+| `SPENDESK_CLIENT_ID_DEMO` | Non | Client ID Spendesk **démo**. Utilisé quand `SPENDESK_USE_DEMO=true` (stdio / fallback HTTP). |
+| `SPENDESK_CLIENT_SECRET_DEMO` | Non | Client secret Spendesk **démo**. |
+| `SPENDESK_BASE_URL` | Non | Surcharge de l’URL de l’API (sans `/` final). |
 | `DB_PATH` | Non | Chemin de la base SQLite utilisée pour le **monitoring** (`mcp_usage_events`). Défaut : `./data/clients.db`. |
 | `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
 | `USAGE_UI_SECRET` | Non | Si définie, la page **GET /usage** (dashboard MCP) exige `?secret=<valeur>` ou `Authorization: Bearer <valeur>`. |
 
+Le mode **stdio** (`npm start`) et le **fallback HTTP** utilisent uniquement **OAuth2 client credentials** : prod → `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` ; démo → `SPENDESK_USE_DEMO=true` + `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (sinon réutilisation des vars prod en stdio, comme avant).
+
 Exemple avec un fichier `.env` (à ne pas commiter) :
 
 ```bash
-# Token Spendesk utilisé par défaut si le client ne fournit pas de credentials (ne pas commiter)
-SPENDESK_API_TOKEN=your_token_here
+# Prod
+SPENDESK_CLIENT_ID=your_client_id
+SPENDESK_CLIENT_SECRET=your_client_secret
 
-# Ou client credentials (alternative à SPENDESK_API_TOKEN)
-# Prod : SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET
-# SPENDESK_CLIENT_ID=your_client_id
-# SPENDESK_CLIENT_SECRET=your_client_secret
-# Démo : SPENDESK_USE_DEMO=true + SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO
+# Démo / sandbox (optionnel)
 # SPENDESK_USE_DEMO=true
 # SPENDESK_CLIENT_ID_DEMO=your_demo_client_id
 # SPENDESK_CLIENT_SECRET_DEMO=your_demo_client_secret
@@ -79,11 +78,19 @@ Puis lancez la doc en local avec `npm run docs:dev` (sync + `mintlify dev`). Les
 ### Lancer le serveur (stdio)
 
 ```bash
-export SPENDESK_API_TOKEN=your_token
+# Client credentials (prod)
+export SPENDESK_CLIENT_ID=...
+export SPENDESK_CLIENT_SECRET=...
 npm start
-# ou
-node dist/index.js
+
+# Client credentials (démo)
+export SPENDESK_USE_DEMO=true
+export SPENDESK_CLIENT_ID_DEMO=...
+export SPENDESK_CLIENT_SECRET_DEMO=...
+npm start
 ```
+
+Smoke test stdio (après `npm run build`) : `npm run test:mcp` — vide `SPENDESK_API_TOKEN` et exige `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (ou paire `_DEMO`).
 
 Le serveur communique en **stdio** : un client MCP (Cursor, Claude Desktop, etc.) peut l'exécuter comme sous-processus et envoyer des requêtes JSON-RPC.
 
@@ -98,14 +105,16 @@ Dans les paramètres MCP de Cursor (ou dans le fichier de config MCP) :
       "command": "node",
       "args": ["/chemin/vers/spendesk-mcp-server/dist/index.js"],
       "env": {
-        "SPENDESK_API_TOKEN": "<votre_token>"
+        "SPENDESK_USE_DEMO": "true",
+        "SPENDESK_CLIENT_ID_DEMO": "<client_id>",
+        "SPENDESK_CLIENT_SECRET_DEMO": "<client_secret>"
       }
     }
   }
 }
 ```
 
-Ou avec `npx` depuis le répertoire du projet :
+Ou avec `npx` depuis le répertoire du projet (même variables `SPENDESK_CLIENT_ID` / `SPENDESK_CLIENT_SECRET` ou démo) :
 
 ```json
 {
@@ -115,7 +124,9 @@ Ou avec `npx` depuis le répertoire du projet :
       "args": ["-y", "tsx", "src/index.ts"],
       "cwd": "/chemin/vers/spendesk-mcp-server",
       "env": {
-        "SPENDESK_API_TOKEN": "<votre_token>"
+        "SPENDESK_USE_DEMO": "true",
+        "SPENDESK_CLIENT_ID_DEMO": "<client_id>",
+        "SPENDESK_CLIENT_SECRET_DEMO": "<client_secret>"
       }
     }
   }
@@ -144,7 +155,8 @@ Ou avec `npx` depuis le répertoire du projet :
          "command": "node",
          "args": ["/chemin/vers/spendesk-mcp-server/dist/index.js"],
          "env": {
-           "SPENDESK_API_TOKEN": "<votre_token_spendesk>"
+           "SPENDESK_CLIENT_ID": "<client_id>",
+           "SPENDESK_CLIENT_SECRET": "<client_secret>"
          }
        }
      }
@@ -157,14 +169,15 @@ Ou avec `npx` depuis le répertoire du projet :
 
 4. **Redémarrer complètement Claude Desktop** (quitter l’app puis la rouvrir). Les outils MCP apparaissent (icône 🔨 à côté de la zone de saisie).
 
-**Option multi-tenant (sans token dans la config)** : si le serveur tourne en HTTP avec portail d’enregistrement, Claude Desktop en mode stdio ne peut pas utiliser ce flux. Utilisez alors le token dans `env` comme ci-dessus, ou un outil qui se connecte au serveur HTTP (URL + clé API).
+**Option multi-tenant** : en HTTP, les clients peuvent envoyer `Bearer client_credentials:...` sans stocker d’identifiants sur le serveur ; en stdio, les credentials restent dans `env` comme ci-dessus.
 
 ### Serveur HTTP (Streamable) — ChatGPT, etc.
 
 Pour utiliser le MCP depuis **ChatGPT**, un client HTTP ou une plateforme qui parle MCP en Streamable HTTP, lancez le serveur HTTP :
 
 ```bash
-export SPENDESK_API_TOKEN=your_token
+export SPENDESK_CLIENT_ID=...
+export SPENDESK_CLIENT_SECRET=...
 npm run start:http
 # écoute par défaut sur http://0.0.0.0:3000
 ```
@@ -189,7 +202,7 @@ Endpoints :
 L’interface `/ui` et le mode multi-tenant (base SQLite + clés API) ont été retirés.  
 L’authentification se fait désormais uniquement via :
 
-- des **credentials fournis par le client** (client credentials ou token API Spendesk), ou
+- des **credentials fournis par le client** (client credentials OAuth2 ou, pour une requête donnée, un **Bearer token** transmis par le client dans l’en-tête HTTP — pas via `SPENDESK_API_TOKEN` côté serveur), ou
 - des **variables d’environnement** configurées sur le serveur.
 
 #### Credentials fournis par le client (Dust / Claude)
@@ -204,12 +217,9 @@ Le serveur appelle alors `POST /v1/auth/token` avec ces identifiants pour la ses
 
 #### Mode Fallback (variables d’environnement)
 
-Si aucun header d’auth n’est fourni, le serveur utilise les variables d’environnement :
+Si aucun header d’auth n’est fourni, le serveur utilise **uniquement** les variables d’environnement **client credentials** : selon `SPENDESK_USE_DEMO`, `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (prod) ou `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (démo). Le serveur appelle POST `/v1/auth/token` avec le flux `client_credentials`.
 
-- **Client credentials** : selon `SPENDESK_USE_DEMO`, le serveur utilise soit `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (prod), soit `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (démo). Dans les deux cas, il appelle POST `/v1/auth/token` avec Basic auth.
-- **Token Bearer** : `SPENDESK_API_TOKEN` (optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401).
-
-L’URL de l’API Spendesk est aussi choisie selon `SPENDESK_USE_DEMO` (sandbox vs public-api). Cela permet d’exécuter le MCP en **mode single-tenant** (un seul compte Spendesk servi par cette instance), en prod ou en démo.
+L’URL de l’API Spendesk est choisie selon `SPENDESK_USE_DEMO` (sandbox vs public-api). Cela permet d’exécuter le MCP en **mode single-tenant**, en prod ou en démo.
 
 #### Déploiement (Docker, PaaS)
 
@@ -218,7 +228,8 @@ L’URL de l’API Spendesk est aussi choisie selon `SPENDESK_USE_DEMO` (sandbox
 ```bash
 docker build -t spendesk-mcp-server .
 docker run -p 3000:3000 \
-  -e SPENDESK_API_TOKEN=your_token \
+  -e SPENDESK_CLIENT_ID=your_client_id \
+  -e SPENDESK_CLIENT_SECRET=your_client_secret \
   spendesk-mcp-server
 ```
 
@@ -229,9 +240,9 @@ docker run -p 3000:3000 \
 3. **Variables d'environnement** (Settings → Variables) :
    - **Environnement** : `SPENDESK_USE_DEMO` = `true` pour la sandbox démo, `false` ou non défini pour la prod.
    - **Auth Spendesk** (au moins une option pour l’environnement choisi) :
-     - **Option A — Client credentials prod** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (quand `SPENDESK_USE_DEMO` est faux).
-     - **Option A bis — Client credentials démo** : `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (quand `SPENDESK_USE_DEMO=true`).
-     - **Option B — Token Bearer** : `SPENDESK_API_TOKEN` (token API Spendesk). Optionnellement `SPENDESK_REFRESH_TOKEN` pour le renouvellement automatique sur 401.
+     - **Client credentials prod** : `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (quand `SPENDESK_USE_DEMO` est faux).
+     - **Client credentials démo** : `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (quand `SPENDESK_USE_DEMO=true`).
+     - Ou aucune variable sur le serveur si **chaque** client envoie `Authorization: Bearer client_credentials:...` (ou les headers Spendesk).
    - `ALLOWED_HOSTS` (recommandé) — host(s) autorisés pour la validation DNS rebinding, ex. : `votre-service.railway.app` (sans `https://`). Tu peux récupérer le domaine après le premier déploiement (Settings → Networking → Generate domain).
 4. **Domaine** : Settings → Networking → Generate domain. L'URL MCP sera `https://<ton-domaine>.railway.app/mcp`.
 5. **Vérifier** : `MCP_BASE_URL=https://<ton-domaine>.railway.app node scripts/test-mcp-http.mjs`
@@ -239,7 +250,7 @@ docker run -p 3000:3000 \
 **Render / Fly.io**
 
 - Déployer le dépôt (build : `npm ci && npm run build`, start : `node dist/server-http.js`).
-- Définir soit `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET`, soit `SPENDESK_API_TOKEN` (et, si besoin, `ALLOWED_HOSTS` pour le domaine public de l'app).
+- Définir `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (ou credentials par requête uniquement), et si besoin `ALLOWED_HOSTS` pour le domaine public de l'app.
 - L'URL du serveur MCP : `https://votre-app.onrender.com/mcp` (ou ton domaine + `/mcp`).
 
 **Déployer la documentation (Mintlify) sur Railway**
@@ -255,8 +266,8 @@ Dans l'interface ou la config du client MCP (ex. ChatGPT avec MCP, ou OpenAI Res
    - **Client credentials (fournis par le client, sans rien en dur sur Railway)** : pour que Dust/Claude envoie le client_id et client_secret Spendesk à la connexion :
      - **Option A — Bearer** : Bearer = `client_credentials:<base64(client_id:client_secret)>`. Générer le token avec : `node scripts/generate-dust-bearer.mjs <client_id> <client_secret>` puis coller la sortie dans le champ Bearer de Dust.
      - **Option B — Headers** : ajouter les headers `X-Spendesk-Client-Id` et `X-Spendesk-Client-Secret` (section « Networking & Headers » dans Dust). Pas besoin de Bearer dans ce cas.
-   - **Token API direct** : Bearer = `SPENDESK_API_TOKEN` (token API Spendesk).
-   - **Mode fallback** : si aucun header n’est envoyé, le serveur utilise les variables d’environnement (`SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` ou `SPENDESK_API_TOKEN`).
+   - **Bearer token** : le client peut envoyer un token API Spendesk en `Authorization: Bearer <token>` pour cette session (sans variable d’environnement équivalente sur le serveur).
+   - **Mode fallback** : si aucun header n’est envoyé, le serveur utilise `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` (ou paire démo) en environnement.
    - Pour protéger l’accès, mettre un reverse proxy (auth, API key) devant `/mcp`.
 
 Le client envoie d'abord une requête POST avec le body JSON-RPC `initialize`, récupère le `mcp-session-id` dans les en-têtes de la réponse, puis réutilise ce session ID pour les requêtes suivantes et pour le flux GET SSE.
@@ -266,11 +277,11 @@ Le client envoie d'abord une requête POST avec le body JSON-RPC `initialize`, r
 Un script vérifie que le serveur HTTP répond correctement (GET /, initialize, tools/list, tools/call) :
 
 ```bash
-# Test en local (le serveur doit tourner : npm run start:http)
-SPENDESK_API_TOKEN=<votre-token> node scripts/test-mcp-http.mjs
+# Test en local (serveur : npm run start:http ; .env avec SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET)
+node scripts/test-mcp-http.mjs
 
-# Test vers une URL déployée
-MCP_BASE_URL=https://votre-app.up.railway.app SPENDESK_API_TOKEN=<votre-token> node scripts/test-mcp-http.mjs
+# Test vers une URL déployée (même paire dans l’environnement pour construire Bearer client_credentials)
+MCP_BASE_URL=https://votre-app.up.railway.app node scripts/test-mcp-http.mjs
 ```
 
 En cas de succès : `✓ MCP HTTP test passed.`
@@ -283,7 +294,7 @@ Un script appelle les 5 outils composites pour vérifier qu’ils répondent cor
 # 1. Démarrer le serveur (dans un premier terminal)
 npm run start:http
 
-# 2. Dans un second terminal (le .env doit contenir SPENDESK_API_TOKEN)
+# 2. Dans un second terminal (même .env / client id+secret que le serveur, ou headers client_credentials)
 node scripts/test-composite-tools.mjs
 ```
 
@@ -389,16 +400,24 @@ Tous les endpoints principaux de l'API Spendesk sont exposés comme outils MCP :
 - `spendesk_create_suppliers` – Création fournisseurs (POST `/v1/suppliers`, corps = tableau d’objets `supplierToCreate` ; scope `experimental:supplier:manage`)
 - `spendesk_update_supplier` / `spendesk_update_suppliers` / `spendesk_set_supplier_archive_status` – Mise à jour / archivage fournisseurs (PATCH)
 - **Démo cycle de vie** : `node scripts/demo-supplier-lifecycle.mjs` (création → mise à jour → archivage ; puis 2 fournisseurs même TVA, filtre `vatNumber`, archivage du plus récent). Nécessite client credentials avec `experimental:supplier:manage` et `SPENDESK_USE_DEMO=true` si trunk sandbox.
+- **Smoke sandbox (API directe, trunk)** : `npm run test:sandbox-api` ou `node scripts/test-sandbox-direct-api.mjs` — appelle `GET /v1/suppliers`, `GET /v1/purchase-orders`, `GET /v1/users`, `GET /v1/cost-centers` sur `SPENDESK_BASE_URL` ou la sandbox démo. Utilise **client credentials** (`SPENDESK_API_TOKEN` vidé dans le script npm) : sur la sandbox, un `SPENDESK_API_TOKEN` “prod” ou expiré renvoie souvent `401`. Optionnel : `SUPPLIER_IDS=id1,id2` pour rejouer un filtre `ids=` comme Postman.
 - **Bulk suppliers (API directe)** : `node scripts/test-supplier-bulk-operations.mjs` — même flux que la collection Postman **`postman/Spendesk-Suppliers-Bulk.postman_collection.json`** (import + étapes : [`postman/README.md`](postman/README.md)).
+- **Liste + archive / désarchive** : `npm run test:suppliers-archive-cycle` — agrège des pages `GET /v1/suppliers?isArchived=false`, prend les **10** plus récents par `createdAt` (tri client : l’API ne fournit pas de `sort`), puis `PATCH /v1/experimental/suppliers/:id/status` (archiver puis désarchiver), comme `spendesk_set_supplier_archive_status`. Variables : `SUPPLIER_ARCHIVE_TEST_COUNT`, `SUPPLIER_ARCHIVE_TEST_MAX_PAGES`, `SUPPLIER_ARCHIVE_TEST_PATCH_DELAY_MS` (défaut 800) pour limiter les **429**, `SUPPLIER_ARCHIVE_TEST_DRY_RUN=1` pour liste seule. Scopes `supplier:read` + `experimental:supplier:manage`.
+- **Désarchiver une liste d’IDs** (ex. après un test interrompu) : `SUPPLIER_IDS=id1,id2,... node -r dotenv/config scripts/unarchive-suppliers-by-ids.mjs` — `PATCH .../status` avec `isArchived: false`, délais + retries **429** (`SUPPLIER_UNARCHIVE_DELAY_MS`).
+- **Même flux archive / désarchive via MCP (stdio)** : `npm run test:mcp-suppliers-archive-cycle` — `spendesk_get_suppliers` → `spendesk_set_supplier_archive_status` → `spendesk_get_supplier` (variables `SUPPLIER_MCP_ARCHIVE_*`, `SUPPLIER_MCP_ARCHIVE_DRY_RUN=1`). Rollback désarchive si erreur après archive partielle.
 - **Fiche fournisseur complète (tous champs OpenAPI + analyse lecture/patch)** : `node scripts/test-supplier-full-attributes.mjs` — rapport et tableau attributs : [`docs/supplier-full-attributes.md`](docs/supplier-full-attributes.md).
-- **Purchase Orders (liste, détail, création, cancel, close)** : `node scripts/test-purchase-orders-api.mjs` — rapport : [`docs/purchase-orders-api-test.md`](docs/purchase-orders-api-test.md) ; Postman : [`postman/Spendesk-Purchase-Orders.postman_collection.json`](postman/Spendesk-Purchase-Orders.postman_collection.json) + [`postman/README.md`](postman/README.md).
+- **Purchase Orders (liste, détail, création, cancel, close)** : `npm run test:po-api` ou `node scripts/test-purchase-orders-api.mjs` — rapport : [`docs/purchase-orders-api-test.md`](docs/purchase-orders-api-test.md) ; **outils MCP** : `npm run test:mcp-po` ; Postman : [`postman/Spendesk-Purchase-Orders.postman_collection.json`](postman/Spendesk-Purchase-Orders.postman_collection.json) + [`postman/README.md`](postman/README.md).
 - `spendesk_get_users` / `spendesk_get_user` – Utilisateurs (avec filtres via `filters`)
 
 ### Webhooks
 - `spendesk_create_webhook` / `spendesk_get_webhooks` / `spendesk_get_webhook` / `spendesk_update_webhook` / `spendesk_delete_webhook` – Gestion des webhooks
 
 ### Purchase Orders
-- `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Commandes d’achat. Liste : filtres alignés sur [Get Purchase Orders](https://developer.spendesk.com/reference/v1-get-purchase-orders) (`supplierIds`, `status`, `companyIds`, `createdFrom`/`createdTo`, `startDateFrom`/`startDateTo`, `endDateFrom`/`endDateTo`, `withItems`, `filters`). Création : [Create a purchase order](https://developer.spendesk.com/reference/v1-create-purchase-order). Autres endpoints documentés dans `spendesk_get_api_reference` : [Get by ID](https://developer.spendesk.com/reference/v1-get-purchase-order), [Cancel](https://developer.spendesk.com/reference/v1-cancel-purchase-order), [Close](https://developer.spendesk.com/reference/v1-close-purchase-order).
+- `spendesk_get_purchase_orders` / `spendesk_create_purchase_order` – Liste et création. Liste : filtres alignés sur [Get Purchase Orders](https://developer.spendesk.com/reference/v1-get-purchase-orders). Création : [Create a purchase order](https://developer.spendesk.com/reference/v1-create-purchase-order).
+- `spendesk_get_purchase_order` – Détail par ID ([Get purchase order](https://developer.spendesk.com/reference/v1-get-purchase-order)), réponse sanitizée.
+- `spendesk_cancel_purchase_order` / `spendesk_close_purchase_order` – [Cancel](https://developer.spendesk.com/reference/v1-cancel-purchase-order) / [Close](https://developer.spendesk.com/reference/v1-close-purchase-order) (scopes `experimental:purchase-order:write`). **Règles métier Spendesk** : un PO ne peut être **annulé** que si **aucune facture** n’y est liée ; un PO ne peut être **clos** que si **toutes** les factures liées sont **payées**.
+- **Édition (PATCH)** : non exposée par l’API publique documentée dans ce dépôt — pas d’outil MCP d’update PO.
+- **Tests** : `npm run test:mcp-po` (stdio MCP : create → get → cancel → create B → close) avec `.env` ; `npm run test:po-api` pour le même scénario en appels HTTP directs (`scripts/test-purchase-orders-api.mjs`).
 
 ### Ephemeral SQLite (analyses SQL)
 - `spendesk_load_sqlite_data` – Charge un jeu (payables, settlements, suppliers, purchase_orders) dans une table SQLite en mémoire. Paramètres : `dataset`, `from_date`, `to_date` (obligatoires pour payables).
@@ -462,7 +481,7 @@ Si Dust ou Claude répond que **l’API Payables retourne 404** ou que **Settlem
 
 - **500 Internal Server Error**  
   Erreur **côté serveur Spendesk** (pas dans le MCP). Le serveur API a planté ou refuse la requête pour une raison interne. À faire :
-  1. **Vérifier le token** : `SPENDESK_API_TOKEN` (ou le token fourni par le client via Bearer/client_credentials) doit être valide et avoir les scopes nécessaires (ex. accès Purchase Orders si tu appelles les POs).
+  1. **Vérifier l’auth** : client credentials ou token Bearer fourni par le client doit être valide et avoir les scopes nécessaires (ex. accès Purchase Orders si tu appelles les POs).
   2. **Vérifier l’environnement** : en démo (`SPENDESK_USE_DEMO=true`), l’API démo peut ne pas supporter tous les endpoints (ex. purchase-orders).
   3. **Réessayer plus tard** : un 500 peut être temporaire (incident Spendesk). Réessayer après quelques minutes.
   4. **Regarder le détail** : depuis la dernière version, le message d’erreur inclut un extrait du corps de réponse de l’API (`Body: ...`) — cela peut indiquer la cause (ex. « feature not enabled », « invalid filter »).

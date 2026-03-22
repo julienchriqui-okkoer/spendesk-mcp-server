@@ -66,4 +66,10 @@ export const SpendeskPaths = {
   // Purchase Orders
   getPurchaseOrders: `${V1}/purchase-orders`,
   createPurchaseOrder: `${V1}/purchase-orders`,
+  getPurchaseOrderById: (purchaseOrderId: string) =>
+    `${V1}/purchase-orders/${encodeURIComponent(purchaseOrderId)}`,
+  cancelPurchaseOrder: (purchaseOrderId: string) =>
+    `${V1}/purchase-orders/${encodeURIComponent(purchaseOrderId)}/cancel`,
+  closePurchaseOrder: (purchaseOrderId: string) =>
+    `${V1}/purchase-orders/${encodeURIComponent(purchaseOrderId)}/close`,
 } as const;

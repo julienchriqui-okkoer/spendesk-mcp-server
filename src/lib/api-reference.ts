@@ -509,7 +509,8 @@ export const API_REFERENCE = {
     {
       method: "GET",
       path: "/v1/purchase-orders/:purchaseOrderId",
-      description: "Get one purchase order by ID. Not exposed as a dedicated MCP tool; call the Public API or use list + filter.",
+      mcpTool: "spendesk_get_purchase_order",
+      description: "Get one purchase order by ID.",
       documentation: ["https://developer.spendesk.com/reference/v1-get-purchase-order"],
       pathParams: [
         { name: "purchaseOrderId", type: "string", required: true, description: "Purchase order ID" },
@@ -529,7 +530,9 @@ export const API_REFERENCE = {
     {
       method: "POST",
       path: "/v1/purchase-orders/:purchaseOrderId/cancel",
-      description: "Cancel a purchase order. Not exposed as an MCP tool; see Public API.",
+      mcpTool: "spendesk_cancel_purchase_order",
+      description:
+        "Cancel a purchase order. Typically only allowed when no invoice is linked to the PO; if invoices exist, the request fails.",
       documentation: ["https://developer.spendesk.com/reference/v1-cancel-purchase-order"],
       pathParams: [
         { name: "purchaseOrderId", type: "string", required: true, description: "Purchase order ID" },
@@ -541,7 +544,9 @@ export const API_REFERENCE = {
     {
       method: "POST",
       path: "/v1/purchase-orders/:purchaseOrderId/close",
-      description: "Close a purchase order. Not exposed as an MCP tool; see Public API.",
+      mcpTool: "spendesk_close_purchase_order",
+      description:
+        "Close a purchase order. Typically only allowed when every invoice linked to the PO is paid; otherwise the request fails.",
       documentation: ["https://developer.spendesk.com/reference/v1-close-purchase-order"],
       pathParams: [
         { name: "purchaseOrderId", type: "string", required: true, description: "Purchase order ID" },

@@ -14,7 +14,6 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { SpendeskClient } from "./spendesk-api/client.js";
 import { ClientCredentialsAuth } from "./spendesk-api/client-credentials-auth.js";
-import { TokenManager } from "./spendesk-api/token-manager.js";
 import { createMcpServer } from "./lib/create-server.js";
 import { authenticateClient, type ClientCredentials } from "./middleware/auth.js";
 import { SessionStore } from "./lib/session-store.js";
@@ -22,14 +21,6 @@ import { mcpSessionStorage } from "./lib/request-context.js";
 import { closeSessionDb } from "./lib/ephemeral-sqlite.js";
 import { logHttpRequestUsage } from "./lib/usage-logger.js";
 import { getTopTools, getVolumeByDay, getRecentCalls } from "./lib/usage-stats.js";
-
-function getApiToken(): string | null {
-  return process.env.SPENDESK_API_TOKEN || null;
-}
-
-function getRefreshToken(): string | null {
-  return process.env.SPENDESK_REFRESH_TOKEN || null;
-}
 
 /** Resolve client ID for env fallback: demo or prod according to useDemo. */
 function getEnvClientId(useDemo: boolean): string | null {
@@ -47,23 +38,8 @@ function getEnvClientSecret(useDemo: boolean): string | null {
   return process.env.SPENDESK_CLIENT_SECRET?.trim() || null;
 }
 
-let fallbackTokenManager: TokenManager | null = null;
 let fallbackClientCredentialsProd: ClientCredentialsAuth | null = null;
 let fallbackClientCredentialsDemo: ClientCredentialsAuth | null = null;
-
-function getFallbackTokenManager(baseUrl: string): TokenManager | null {
-  const access = getApiToken();
-  const refresh = getRefreshToken();
-  if (!access || !refresh) return null;
-  if (!fallbackTokenManager) {
-    fallbackTokenManager = new TokenManager({
-      baseUrl,
-      refreshToken: refresh,
-      initialAccessToken: access,
-    });
-  }
-  return fallbackTokenManager;
-}
 
 function getFallbackClientCredentials(baseUrl: string, useDemo: boolean): ClientCredentialsAuth | null {
   const id = getEnvClientId(useDemo);
@@ -114,39 +90,32 @@ function buildApi(clientToken?: string, clientCredentials?: ClientCredentials): 
     });
   }
 
-  const apiToken = clientToken || getApiToken();
-  const hasEnvCredentials = getEnvClientId(useDemo) && getEnvClientSecret(useDemo);
-  if (!apiToken && !getRefreshToken() && !hasEnvCredentials) {
-    throw new Error(
-      useDemo
-        ? "No Spendesk demo credentials. Set SPENDESK_USE_DEMO=true and SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO (or SPENDESK_API_TOKEN), or have the client send Bearer client_credentials."
-        : "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET / SPENDESK_API_TOKEN in env."
-    );
+  // 2) Bearer token supplied by the HTTP client (not read from SPENDESK_API_TOKEN in env)
+  if (clientToken) {
+    return new SpendeskClient({
+      apiToken: clientToken,
+      useDemo,
+      baseUrl,
+    });
   }
 
-  if (!clientToken) {
-    const cc = getFallbackClientCredentials(baseUrl, useDemo);
-    if (cc) {
-      return new SpendeskClient({
-        apiToken: "",
-        useDemo,
-        baseUrl,
-        getToken: () => cc.getAccessToken(),
-        on401Refresh: () => cc.refresh(),
-      });
-    }
-    const tm = getFallbackTokenManager(baseUrl);
-    if (tm) {
-      return new SpendeskClient({
-        apiToken: apiToken || "",
-        useDemo,
-        baseUrl,
-        getToken: () => tm.getAccessToken(),
-        on401Refresh: () => tm.refresh(),
-      });
-    }
+  // 3) Server env: OAuth2 client credentials only
+  const cc = getFallbackClientCredentials(baseUrl, useDemo);
+  if (cc) {
+    return new SpendeskClient({
+      apiToken: "",
+      useDemo,
+      baseUrl,
+      getToken: () => cc.getAccessToken(),
+      on401Refresh: () => cc.refresh(),
+    });
   }
-  return new SpendeskClient({ apiToken: apiToken!, useDemo, baseUrl });
+
+  throw new Error(
+    useDemo
+      ? "No Spendesk demo credentials. Set SPENDESK_USE_DEMO=true and SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO (or SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET), or have the client send Bearer client_credentials."
+      : "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET in env."
+  );
 }
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -478,11 +447,18 @@ const server = app.listen(PORT, HOST, () => {
   console.log("  GET  /doc — Documentation (redirect if DOCS_URL set)");
   console.log("  GET  /usage — MCP usage dashboard");
   
-  // Log environment status
-  if (process.env.SPENDESK_API_TOKEN) {
-    console.log("✓ SPENDESK_API_TOKEN configured (fallback mode)");
+  const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+  const pair = (a?: string, b?: string) => Boolean(a?.trim() && b?.trim());
+  const hasEnvCc = useDemo
+    ? pair(process.env.SPENDESK_CLIENT_ID_DEMO, process.env.SPENDESK_CLIENT_SECRET_DEMO) ||
+      pair(process.env.SPENDESK_CLIENT_ID, process.env.SPENDESK_CLIENT_SECRET)
+    : pair(process.env.SPENDESK_CLIENT_ID, process.env.SPENDESK_CLIENT_SECRET);
+  if (hasEnvCc) {
+    console.log("✓ Spendesk client credentials in env (server fallback for /mcp when request has no auth)");
   } else {
-    console.warn("⚠ SPENDESK_API_TOKEN not set - clients must provide credentials via client_credentials or direct Bearer token");
+    console.warn(
+      "⚠ No SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET in env — each /mcp client must send Bearer client_credentials (or X-Spendesk-Client-Id / Secret)"
+    );
   }
   
 });

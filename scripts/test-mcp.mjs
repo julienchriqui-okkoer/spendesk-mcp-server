@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 /**
  * Quick test: spawn the MCP server with SPENDESK_USE_DEMO=true, send initialize + tools/list + one tool call.
- * Requires: SPENDESK_API_TOKEN in env (or load from .env).
- * Usage: node scripts/test-mcp.mjs
+ * Requires: SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET (or _DEMO pair; e.g. from .env).
+ * SPENDESK_API_TOKEN is cleared so the server uses client_credentials only (same idea as test:sandbox-api).
+ * Usage: npm run test:mcp   or   node scripts/test-mcp.mjs
  */
 import { spawn } from "child_process";
 
-const token = process.env.SPENDESK_API_TOKEN;
-if (!token) {
-  console.error("Set SPENDESK_API_TOKEN (e.g. from .env) to run this test.");
+const demoId = process.env.SPENDESK_CLIENT_ID_DEMO;
+const demoSecret = process.env.SPENDESK_CLIENT_SECRET_DEMO;
+const prodId = process.env.SPENDESK_CLIENT_ID;
+const prodSecret = process.env.SPENDESK_CLIENT_SECRET;
+if ((!demoId || !demoSecret) && (!prodId || !prodSecret)) {
+  console.error("Set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET (or SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO).");
   process.exit(1);
 }
 
 const server = spawn("node", ["dist/index.js"], {
-  env: { ...process.env, SPENDESK_USE_DEMO: "true", SPENDESK_API_TOKEN: token },
+  env: { ...process.env, SPENDESK_USE_DEMO: "true", SPENDESK_API_TOKEN: "", SPENDESK_REFRESH_TOKEN: "" },
   stdio: ["pipe", "pipe", "inherit"],
 });
 

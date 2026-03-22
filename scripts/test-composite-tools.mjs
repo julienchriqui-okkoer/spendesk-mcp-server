@@ -6,25 +6,40 @@
  *   # Server must be running: npm run start:http
  *   node scripts/test-composite-tools.mjs
  *
- *   # With client credentials (no token in server .env)
- *   X_SPENDESK_CLIENT_ID=xxx X_SPENDESK_CLIENT_SECRET=yyy node scripts/test-composite-tools.mjs
+ *   # With client credentials in env (or override with X_SPENDESK_CLIENT_ID / X_SPENDESK_CLIENT_SECRET)
  *
  *   # Against deployed server
  *   MCP_BASE_URL=https://your-app.railway.app node scripts/test-composite-tools.mjs
  */
+import { Buffer } from "node:buffer";
+
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
-const SPENDESK_API_TOKEN = process.env.SPENDESK_API_TOKEN?.trim();
-const CLIENT_ID = process.env.X_SPENDESK_CLIENT_ID?.trim();
-const CLIENT_SECRET = process.env.X_SPENDESK_CLIENT_SECRET?.trim();
+const OVERRIDE_ID = process.env.X_SPENDESK_CLIENT_ID?.trim();
+const OVERRIDE_SECRET = process.env.X_SPENDESK_CLIENT_SECRET?.trim();
 
-function getBearerAuth() {
-  if (CLIENT_ID && CLIENT_SECRET) {
-    const b64 = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`, "utf8").toString("base64");
-    return `client_credentials:${b64}`;
+function buildAuthorizationHeader() {
+  if (OVERRIDE_ID && OVERRIDE_SECRET) {
+    const b64 = Buffer.from(`${OVERRIDE_ID}:${OVERRIDE_SECRET}`, "utf8").toString("base64");
+    return `Bearer client_credentials:${b64}`;
   }
-  return null;
+  const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+  const id = (
+    useDemo
+      ? process.env.SPENDESK_CLIENT_ID_DEMO || process.env.SPENDESK_CLIENT_ID
+      : process.env.SPENDESK_CLIENT_ID
+  )?.trim();
+  const secret = (
+    useDemo
+      ? process.env.SPENDESK_CLIENT_SECRET_DEMO || process.env.SPENDESK_CLIENT_SECRET
+      : process.env.SPENDESK_CLIENT_SECRET
+  )?.trim();
+  if (!id || !secret) return undefined;
+  const b64 = Buffer.from(`${id}:${secret}`, "utf8").toString("base64");
+  return `Bearer client_credentials:${b64}`;
 }
+
+const authHeader = buildAuthorizationHeader();
 
 function getHeaders(sessionId, protocolVersion) {
   const h = {
@@ -33,8 +48,7 @@ function getHeaders(sessionId, protocolVersion) {
   };
   if (sessionId) h["mcp-session-id"] = sessionId;
   if (protocolVersion) h["mcp-protocol-version"] = protocolVersion;
-  const bearer = getBearerAuth() || SPENDESK_API_TOKEN;
-  if (bearer) h["Authorization"] = `Bearer ${bearer}`;
+  if (authHeader) h["Authorization"] = authHeader;
   return h;
 }
 
@@ -74,9 +88,9 @@ async function mcpCall(sessionId, protocolVersion, toolName, args = {}) {
 
 async function main() {
   console.log("Testing composite tools at", BASE);
-  if (CLIENT_ID && CLIENT_SECRET) console.log("  Auth: client credentials (X_SPENDESK_CLIENT_ID + X_SPENDESK_CLIENT_SECRET)");
-  else if (SPENDESK_API_TOKEN) console.log("  Auth: Bearer SPENDESK_API_TOKEN (", SPENDESK_API_TOKEN.slice(0, 8) + "... )");
-  else console.log("  Auth: none (server fallback env)");
+  if (OVERRIDE_ID && OVERRIDE_SECRET) console.log("  Auth: Bearer client_credentials (X_SPENDESK_CLIENT_ID + X_SPENDESK_CLIENT_SECRET)");
+  else if (authHeader) console.log("  Auth: Bearer client_credentials (SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET from env)");
+  else console.log("  Auth: none (server must have client id+secret in env)");
   console.log("");
 
   // Initialize session

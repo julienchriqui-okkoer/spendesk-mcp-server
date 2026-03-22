@@ -7,8 +7,6 @@
     "spendesk_create_webhook",
     "spendesk_update_webhook",
     "spendesk_delete_webhook",
-    "spendesk_create_purchase_order",
-    "spendesk_get_purchase_orders",
     "spendesk_get_purchase_orders_and_payables_export",
     "spendesk_get_accruals"
   ]

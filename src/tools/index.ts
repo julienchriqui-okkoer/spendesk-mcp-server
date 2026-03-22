@@ -704,6 +704,24 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       case "spendesk_create_purchase_order":
         return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
 
+      case "spendesk_get_purchase_order": {
+        const id = String(args.purchaseOrderId ?? "").trim();
+        const withItems = args.withItems === true ? "true" : "false";
+        return api.get(SpendeskPaths.getPurchaseOrderById(id), { withItems });
+      }
+      case "spendesk_cancel_purchase_order": {
+        const id = String(args.purchaseOrderId ?? "").trim();
+        const withItems = args.withItems === true ? "true" : "false";
+        const path = `${SpendeskPaths.cancelPurchaseOrder(id)}?withItems=${withItems}`;
+        return api.post(path, {});
+      }
+      case "spendesk_close_purchase_order": {
+        const id = String(args.purchaseOrderId ?? "").trim();
+        const withItems = args.withItems === true ? "true" : "false";
+        const path = `${SpendeskPaths.closePurchaseOrder(id)}?withItems=${withItems}`;
+        return api.post(path, {});
+      }
+
       case "spendesk_get_top_suppliers_by_spend": {
         const from = String(args.from ?? "");
         const to = String(args.to ?? "");
@@ -1575,9 +1593,40 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_create_purchase_order", () =>
     mcp.tool(
       "spendesk_create_purchase_order",
-    "Create a purchase order: POST /v1/purchase-orders. Schema: https://developer.spendesk.com/reference/v1-create-purchase-order (experimental:purchase-order:write). Related: get by id https://developer.spendesk.com/reference/v1-get-purchase-order — cancel https://developer.spendesk.com/reference/v1-cancel-purchase-order — close https://developer.spendesk.com/reference/v1-close-purchase-order",
+    "Create a purchase order: POST /v1/purchase-orders. Schema: https://developer.spendesk.com/reference/v1-create-purchase-order (experimental:purchase-order:write). Use spendesk_get_purchase_order, spendesk_cancel_purchase_order, spendesk_close_purchase_order for read/cancel/close. Business rules: cancel only when no invoice is linked to the PO; close only when every linked invoice is paid.",
     { payload: z.record(z.unknown()).describe("PO body (see Spendesk docs)") },
       async (args) => toContent(await run("spendesk_create_purchase_order", args))
+    )
+  );
+  const purchaseOrderByIdSchema = {
+    purchaseOrderId: z.string().describe("Purchase order ID"),
+    withItems: z
+      .boolean()
+      .optional()
+      .describe("Include line items in the API response (query withItems). Default false."),
+  };
+  maybeReg("spendesk_get_purchase_order", () =>
+    mcp.tool(
+      "spendesk_get_purchase_order",
+      "Get one purchase order by ID: GET /v1/purchase-orders/:id. Docs: https://developer.spendesk.com/reference/v1-get-purchase-order — response PO is sanitized (no large arrays).",
+      purchaseOrderByIdSchema,
+      async (args) => toContent(await run("spendesk_get_purchase_order", args))
+    )
+  );
+  maybeReg("spendesk_cancel_purchase_order", () =>
+    mcp.tool(
+      "spendesk_cancel_purchase_order",
+      "Cancel a purchase order: POST /v1/purchase-orders/:id/cancel. Docs: https://developer.spendesk.com/reference/v1-cancel-purchase-order. Business rule: cancellation is only allowed when no invoice is linked to the PO; if any invoice exists, the API will reject (use spendesk_get_purchase_order with withItems if needed to inspect linkage).",
+      purchaseOrderByIdSchema,
+      async (args) => toContent(await run("spendesk_cancel_purchase_order", args))
+    )
+  );
+  maybeReg("spendesk_close_purchase_order", () =>
+    mcp.tool(
+      "spendesk_close_purchase_order",
+      "Close a purchase order: POST /v1/purchase-orders/:id/close. Docs: https://developer.spendesk.com/reference/v1-close-purchase-order. Business rule: closing is only allowed when every invoice linked to the PO is paid; otherwise the API will reject.",
+      purchaseOrderByIdSchema,
+      async (args) => toContent(await run("spendesk_close_purchase_order", args))
     )
   );
 

@@ -593,8 +593,10 @@ async function main() {
     context: ctx,
     openPurchaseOrdersSample: openSamples,
     hints: {
+      invoiceRules:
+        "Annulation: seulement si aucune facture n’est liée au PO. Clôture: seulement si toutes les factures liées sont payées — un PO « open » sans facture échouera souvent au close.",
       cancelCloseEnv:
-        "Pour tester annulation / clôture sans POST create (si 500), définir PO_TEST_CANCEL_PO_ID et PO_TEST_CLOSE_PO_ID avec deux PO distincts en statut open (voir openPurchaseOrdersSample).",
+        "Pour tester sans POST create (si 500): PO_TEST_CANCEL_PO_ID = PO sans facture liée ; PO_TEST_CLOSE_PO_ID = PO éligible à la clôture (ex. toutes factures payées). Voir openPurchaseOrdersSample pour des open.",
       baseUrl:
         "Utiliser le même host que Postman : SPENDESK_BASE_URL (sinon démo → beta-sandbox trunk). Si Postman obtient 201 et le script 500 sur le même POST, comparer le corps brut (PO_DEBUG=1) et les IDs (userId / cost center / supplier).",
       trunkMutations:

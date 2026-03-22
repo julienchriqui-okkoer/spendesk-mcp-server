@@ -3,15 +3,38 @@
  * Test the deployed (or local) MCP HTTP server.
  * Performs: GET / (info) → POST /mcp (initialize) → POST /mcp (tools/list) → POST /mcp (tools/call).
  *
+ * Auth to /mcp (same as production clients):
+ *   Bearer client_credentials:<base64(client_id:client_secret)> built from SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET
+ *   (or _DEMO vars when SPENDESK_USE_DEMO=true). If you omit Authorization, the server may still work when it has
+ *   client id+secret in its own env.
+ *
  * Usage:
  *   node scripts/test-mcp-http.mjs
  *   MCP_BASE_URL=https://your-app.up.railway.app node scripts/test-mcp-http.mjs
  *
  * Default MCP_BASE_URL: http://localhost:3000
  */
+import { Buffer } from "node:buffer";
+
 const BASE = (process.env.MCP_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const MCP_URL = `${BASE}/mcp`;
-const SPENDESK_API_TOKEN = process.env.SPENDESK_API_TOKEN?.trim();
+
+function buildAuthorizationHeader() {
+  const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+  const id = (
+    useDemo
+      ? process.env.SPENDESK_CLIENT_ID_DEMO || process.env.SPENDESK_CLIENT_ID
+      : process.env.SPENDESK_CLIENT_ID
+  )?.trim();
+  const secret = (
+    useDemo
+      ? process.env.SPENDESK_CLIENT_SECRET_DEMO || process.env.SPENDESK_CLIENT_SECRET
+      : process.env.SPENDESK_CLIENT_SECRET
+  )?.trim();
+  if (!id || !secret) return undefined;
+  const b64 = Buffer.from(`${id}:${secret}`, "utf8").toString("base64");
+  return `Bearer client_credentials:${b64}`;
+}
 
 /** Parse first JSON-RPC result from SSE stream (data: {...} lines). */
 async function parseSSEJson(body) {
@@ -40,6 +63,8 @@ function readStream(reader) {
   })();
 }
 
+const authHeader = buildAuthorizationHeader();
+
 const headers = (sessionId, protocolVersion) => {
   const h = {
     "Content-Type": "application/json",
@@ -47,13 +72,14 @@ const headers = (sessionId, protocolVersion) => {
   };
   if (sessionId) h["mcp-session-id"] = sessionId;
   if (protocolVersion) h["mcp-protocol-version"] = protocolVersion;
-  if (SPENDESK_API_TOKEN) h["Authorization"] = `Bearer ${SPENDESK_API_TOKEN}`;
+  if (authHeader) h["Authorization"] = authHeader;
   return h;
 };
 
 async function main() {
   console.log("Testing MCP at", BASE);
-  if (SPENDESK_API_TOKEN) console.log("  Auth: Bearer SPENDESK_API_TOKEN (", SPENDESK_API_TOKEN.slice(0, 8) + "... )");
+  if (authHeader) console.log("  Auth: Bearer client_credentials:<base64(id:secret)>");
+  else console.log("  Auth: (none — server must have SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET in env)");
   console.log("");
 
   // 1) GET / — info (and check server is reachable)
