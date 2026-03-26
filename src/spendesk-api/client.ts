@@ -1,21 +1,27 @@
 /**
  * Spendesk Public API client.
- * Base URL: https://public-api.spendesk.com (prod) or https://public-api.demo.spendesk.com (demo)
+ * Base URL by environment:
+ * - production: https://public-api.spendesk.com
+ * - demo: https://public-api.demo.spendesk.com
+ * - trunk: https://public-api.trunk.spendesk.dev
  * All monetary amounts in API responses are converted from cents to major units (EUR) before return.
  * @see https://developer.spendesk.com/reference/general
  */
 
 import { convertAmountsInResponse } from "../lib/amounts.js";
 import { sanitizePurchaseOrder } from "../lib/sanitize-purchase-order.js";
-
-const DEFAULT_BASE_URL = "https://public-api.spendesk.com";
-const DEFAULT_DEMO_BASE_URL = "https://beta-sandbox.api.trunk.spendesk.services";
+import {
+  type SpendeskEnvironment,
+  resolveSpendeskBaseUrl,
+} from "./environment.js";
 
 export type SpendeskClientConfig = {
   /** Bearer token (from OAuth2 or API credentials). Do not commit. */
   apiToken: string;
   /** Use demo API when true. */
   useDemo?: boolean;
+  /** Explicit environment selection. */
+  environment?: SpendeskEnvironment;
   /** Override base URL. */
   baseUrl?: string;
   /** Optional: resolve current token (e.g. from TokenManager). Used for Authorization header when set. */
@@ -45,9 +51,9 @@ export class SpendeskClient {
     this.apiToken = config.apiToken;
     this.getToken = config.getToken;
     this.on401Refresh = config.on401Refresh;
-    this.baseUrl =
-      config.baseUrl ??
-      (config.useDemo ?? false ? DEFAULT_DEMO_BASE_URL : DEFAULT_BASE_URL);
+    const environment: SpendeskEnvironment =
+      config.environment ?? ((config.useDemo ?? false) ? "trunk" : "production");
+    this.baseUrl = config.baseUrl ?? resolveSpendeskBaseUrl(environment);
     if (!this.apiToken && !this.getToken) {
       throw new Error("Spendesk API token is required");
     }

@@ -2,12 +2,17 @@
  * Authentication middleware for Spendesk API credentials.
  * Supports:
  * - Client credentials from client (Dust/Claude): Bearer "client_credentials:<base64(client_id:client_secret)>" or headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret
- * - Optional: X-Spendesk-Use-Demo: true | 1 — force sandbox/trunk API host for this session when using client credentials (required if Railway has SPENDESK_USE_DEMO=false but credentials are sandbox).
+ * - Optional: X-Spendesk-Environment: production|demo|trunk — force API host for this session. Alias: Spendesk-Environment.
+ * - Optional legacy: X-Spendesk-Use-Demo: true | 1 — mapped to trunk.
  * - Direct Spendesk API token: Authorization: Bearer <apiToken> (used as-is, no database lookup)
  * If none present, the server falls back to environment credentials in buildApi.
  */
 
 import type { Request, Response, NextFunction } from "express";
+import {
+  type SpendeskEnvironment,
+  parseSpendeskEnvironmentHint,
+} from "../spendesk-api/environment.js";
 
 export interface ClientCredentials {
   clientId: string;
@@ -21,8 +26,10 @@ declare global {
       clientToken?: string;
       /** When set, use POST /v1/auth/token with these credentials (no DB lookup). */
       clientCredentials?: ClientCredentials;
-      /** From X-Spendesk-Use-Demo on initialize; overrides server env for API base URL with client credentials. */
+      /** Legacy hint from X-Spendesk-Use-Demo (true => trunk, false => production). */
       spendeskUseDemoHint?: boolean;
+      /** From X-Spendesk-Environment on initialize; overrides server env for API base URL. */
+      spendeskEnvironmentHint?: SpendeskEnvironment;
     }
   }
 }
@@ -60,15 +67,34 @@ function getClientCredentialsFromHeaders(req: Request): ClientCredentials | null
   return { clientId: id, clientSecret: secret };
 }
 
-/** X-Spendesk-Use-Demo: true | 1 | false | 0 — when client sends OAuth credentials, align API host with sandbox vs prod. */
+/** X-Spendesk-Use-Demo (or Spendesk-Use-Demo): true | 1 | false | 0 — align API host with sandbox vs prod. */
 function parseSpendeskUseDemoHint(req: Request): boolean | undefined {
-  const raw = (req.headers["x-spendesk-use-demo"] as string)?.trim().toLowerCase();
+  const value =
+    (req.headers["x-spendesk-use-demo"] as string) ||
+    (req.headers["spendesk-use-demo"] as string);
+  const raw = value?.trim().toLowerCase();
+  if (!raw) return undefined;
   if (raw === "true" || raw === "1") return true;
   if (raw === "false" || raw === "0") return false;
   return undefined;
 }
 
+/** X-Spendesk-Environment: production|prod|demo|trunk (or Spendesk-Environment). */
+function parseEnvironmentHeaderHint(req: Request): SpendeskEnvironment | undefined {
+  const raw =
+    (req.headers["x-spendesk-environment"] as string) ||
+    (req.headers["spendesk-environment"] as string);
+  return parseSpendeskEnvironmentHint(raw);
+}
+
 function attachUseDemoHintIfCredentials(req: Request): void {
+  const envHint = parseEnvironmentHeaderHint(req);
+  if (envHint && (req.clientCredentials || req.clientToken)) {
+    req.spendeskEnvironmentHint = envHint;
+    req.spendeskUseDemoHint = envHint !== "production";
+    return;
+  }
+
   const hint = parseSpendeskUseDemoHint(req);
   if (hint !== undefined && (req.clientCredentials || req.clientToken)) {
     req.spendeskUseDemoHint = hint;

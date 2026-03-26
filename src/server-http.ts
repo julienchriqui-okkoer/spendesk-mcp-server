@@ -21,31 +21,54 @@ import { mcpSessionStorage } from "./lib/request-context.js";
 import { closeSessionDb } from "./lib/ephemeral-sqlite.js";
 import { logHttpRequestUsage } from "./lib/usage-logger.js";
 import { getTopTools, getVolumeByDay, getRecentCalls } from "./lib/usage-stats.js";
+import {
+  type SpendeskEnvironment,
+  resolveSpendeskBaseUrl,
+  resolveSpendeskEnvironmentFromEnv,
+} from "./spendesk-api/environment.js";
 
-/** Resolve client ID for env fallback: demo or prod according to useDemo. */
-function getEnvClientId(useDemo: boolean): string | null {
-  if (useDemo) {
-    return process.env.SPENDESK_CLIENT_ID_DEMO?.trim() || null;
+/** Resolve client ID for env fallback according to environment. */
+function getEnvClientId(environment: SpendeskEnvironment): string | null {
+  if (environment === "production") {
+    return process.env.SPENDESK_CLIENT_ID?.trim() || null;
   }
-  return process.env.SPENDESK_CLIENT_ID?.trim() || null;
+  if (environment === "trunk") {
+    return (
+      process.env.SPENDESK_CLIENT_ID_TRUNK?.trim() ||
+      process.env.SPENDESK_CLIENT_ID_DEMO?.trim() ||
+      null
+    );
+  }
+  return process.env.SPENDESK_CLIENT_ID_DEMO?.trim() || null;
 }
 
-/** Resolve client secret for env fallback: demo or prod according to useDemo. */
-function getEnvClientSecret(useDemo: boolean): string | null {
-  if (useDemo) {
-    return process.env.SPENDESK_CLIENT_SECRET_DEMO?.trim() || null;
+/** Resolve client secret for env fallback according to environment. */
+function getEnvClientSecret(environment: SpendeskEnvironment): string | null {
+  if (environment === "production") {
+    return process.env.SPENDESK_CLIENT_SECRET?.trim() || null;
   }
-  return process.env.SPENDESK_CLIENT_SECRET?.trim() || null;
+  if (environment === "trunk") {
+    return (
+      process.env.SPENDESK_CLIENT_SECRET_TRUNK?.trim() ||
+      process.env.SPENDESK_CLIENT_SECRET_DEMO?.trim() ||
+      null
+    );
+  }
+  return process.env.SPENDESK_CLIENT_SECRET_DEMO?.trim() || null;
 }
 
 let fallbackClientCredentialsProd: ClientCredentialsAuth | null = null;
 let fallbackClientCredentialsDemo: ClientCredentialsAuth | null = null;
+let fallbackClientCredentialsTrunk: ClientCredentialsAuth | null = null;
 
-function getFallbackClientCredentials(baseUrl: string, useDemo: boolean): ClientCredentialsAuth | null {
-  const id = getEnvClientId(useDemo);
-  const secret = getEnvClientSecret(useDemo);
+function getFallbackClientCredentials(
+  baseUrl: string,
+  environment: SpendeskEnvironment
+): ClientCredentialsAuth | null {
+  const id = getEnvClientId(environment);
+  const secret = getEnvClientSecret(environment);
   if (!id || !secret) return null;
-  if (useDemo) {
+  if (environment === "demo") {
     if (!fallbackClientCredentialsDemo) {
       fallbackClientCredentialsDemo = new ClientCredentialsAuth({
         baseUrl,
@@ -54,6 +77,16 @@ function getFallbackClientCredentials(baseUrl: string, useDemo: boolean): Client
       });
     }
     return fallbackClientCredentialsDemo;
+  }
+  if (environment === "trunk") {
+    if (!fallbackClientCredentialsTrunk) {
+      fallbackClientCredentialsTrunk = new ClientCredentialsAuth({
+        baseUrl,
+        clientId: id,
+        clientSecret: secret,
+      });
+    }
+    return fallbackClientCredentialsTrunk;
   }
   if (!fallbackClientCredentialsProd) {
     fallbackClientCredentialsProd = new ClientCredentialsAuth({
@@ -72,13 +105,15 @@ function buildApi(
   clientToken?: string,
   clientCredentials?: ClientCredentials,
   /** From X-Spendesk-Use-Demo on the initialize request (Dust / multi-tenant). */
-  useDemoClientHint?: boolean
+  useDemoClientHint?: boolean,
+  environmentHint?: SpendeskEnvironment
 ): SpendeskClient {
-  const useDemoFromEnv = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
-  const useDemo = useDemoClientHint !== undefined ? useDemoClientHint : useDemoFromEnv;
-  const baseUrl =
-    process.env.SPENDESK_BASE_URL ||
-    (useDemo ? "https://beta-sandbox.api.trunk.spendesk.services" : "https://public-api.spendesk.com");
+  const environment =
+    environmentHint ??
+    (useDemoClientHint !== undefined
+      ? (useDemoClientHint ? "trunk" : "production")
+      : resolveSpendeskEnvironmentFromEnv());
+  const baseUrl = resolveSpendeskBaseUrl(environment, process.env.SPENDESK_BASE_URL);
 
   // 1) Credentials provided by client at connection time (Dust/Claude)
   if (clientCredentials) {
@@ -89,7 +124,7 @@ function buildApi(
     });
     return new SpendeskClient({
       apiToken: "",
-      useDemo,
+      environment,
       baseUrl,
       getToken: () => cc.getAccessToken(),
       on401Refresh: () => cc.refresh(),
@@ -100,17 +135,17 @@ function buildApi(
   if (clientToken) {
     return new SpendeskClient({
       apiToken: clientToken,
-      useDemo,
+      environment,
       baseUrl,
     });
   }
 
   // 3) Server env: OAuth2 client credentials only
-  const cc = getFallbackClientCredentials(baseUrl, useDemo);
+  const cc = getFallbackClientCredentials(baseUrl, environment);
   if (cc) {
     return new SpendeskClient({
       apiToken: "",
-      useDemo,
+      environment,
       baseUrl,
       getToken: () => cc.getAccessToken(),
       on401Refresh: () => cc.refresh(),
@@ -118,9 +153,11 @@ function buildApi(
   }
 
   throw new Error(
-    useDemo
-      ? "No Spendesk demo credentials. Set SPENDESK_USE_DEMO=true and SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO (or SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET), or have the client send Bearer client_credentials."
-      : "No Spendesk API credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET in env."
+    environment === "production"
+      ? "No Spendesk production credentials. Use Bearer client_credentials:<base64(id:secret)>, headers X-Spendesk-Client-Id + X-Spendesk-Client-Secret, or set SPENDESK_CLIENT_ID + SPENDESK_CLIENT_SECRET in env."
+      : environment === "demo"
+        ? "No Spendesk demo credentials. Set SPENDESK_ENV=demo and SPENDESK_CLIENT_ID_DEMO + SPENDESK_CLIENT_SECRET_DEMO, or have the client send Bearer client_credentials with X-Spendesk-Environment: demo."
+        : "No Spendesk trunk credentials. Set SPENDESK_ENV=trunk and SPENDESK_CLIENT_ID_TRUNK + SPENDESK_CLIENT_SECRET_TRUNK (or _DEMO vars), or have the client send Bearer client_credentials with X-Spendesk-Environment: trunk."
   );
 }
 
@@ -348,7 +385,12 @@ app.post("/mcp", authenticateClient, async (req: Request, res: Response) => {
           },
         });
 
-        const api = buildApi(clientToken, clientCredentials, req.spendeskUseDemoHint);
+        const api = buildApi(
+          clientToken,
+          clientCredentials,
+          req.spendeskUseDemoHint,
+          req.spendeskEnvironmentHint
+        );
         const mcp = createMcpServer(api);
         await mcp.connect(transport);
         await transport.handleRequest(req, res, req.body);
@@ -453,12 +495,15 @@ const server = app.listen(PORT, HOST, () => {
   console.log("  GET  /doc — Documentation (redirect if DOCS_URL set)");
   console.log("  GET  /usage — MCP usage dashboard");
   
-  const useDemo = process.env.SPENDESK_USE_DEMO === "true" || process.env.SPENDESK_USE_DEMO === "1";
+  const environment = resolveSpendeskEnvironmentFromEnv();
   const pair = (a?: string, b?: string) => Boolean(a?.trim() && b?.trim());
-  const hasEnvCc = useDemo
-    ? pair(process.env.SPENDESK_CLIENT_ID_DEMO, process.env.SPENDESK_CLIENT_SECRET_DEMO) ||
-      pair(process.env.SPENDESK_CLIENT_ID, process.env.SPENDESK_CLIENT_SECRET)
-    : pair(process.env.SPENDESK_CLIENT_ID, process.env.SPENDESK_CLIENT_SECRET);
+  const hasEnvCc =
+    environment === "production"
+      ? pair(process.env.SPENDESK_CLIENT_ID, process.env.SPENDESK_CLIENT_SECRET)
+      : environment === "demo"
+        ? pair(process.env.SPENDESK_CLIENT_ID_DEMO, process.env.SPENDESK_CLIENT_SECRET_DEMO)
+        : pair(process.env.SPENDESK_CLIENT_ID_TRUNK, process.env.SPENDESK_CLIENT_SECRET_TRUNK) ||
+          pair(process.env.SPENDESK_CLIENT_ID_DEMO, process.env.SPENDESK_CLIENT_SECRET_DEMO);
   if (hasEnvCc) {
     console.log("✓ Spendesk client credentials in env (server fallback for /mcp when request has no auth)");
   } else {

@@ -23,17 +23,20 @@ Variables d'environnement :
 
 | Variable | Obligatoire | Description |
 |----------|--------------|-------------|
-| `SPENDESK_USE_DEMO` | Non | `true` ou `1` : utilise l’API **démo** (URL sandbox + `SPENDESK_CLIENT_ID_DEMO` / `SPENDESK_CLIENT_SECRET_DEMO`). Sinon : prod (URL publique + `SPENDESK_CLIENT_ID` / `SPENDESK_CLIENT_SECRET`). |
+| `SPENDESK_ENV` | Non | Environnement API: `production` (défaut), `demo` ou `trunk`. |
+| `SPENDESK_USE_DEMO` | Non | **Legacy**: `true`/`1` est mappé vers `trunk` pour rétrocompatibilité. |
 | `SPENDESK_CLIENT_ID` | Oui* | Client ID Spendesk (prod). *Requis pour **stdio** ; pour HTTP, requis sauf si chaque client envoie `Bearer client_credentials` ou les headers Spendesk. |
 | `SPENDESK_CLIENT_SECRET` | Oui* | Client secret Spendesk (prod). **Ne pas commiter.** |
-| `SPENDESK_CLIENT_ID_DEMO` | Non | Client ID Spendesk **démo**. Utilisé quand `SPENDESK_USE_DEMO=true` (stdio / fallback HTTP). |
+| `SPENDESK_CLIENT_ID_DEMO` | Non | Client ID Spendesk **demo** (`SPENDESK_ENV=demo`). Peut aussi servir de fallback non-prod. |
 | `SPENDESK_CLIENT_SECRET_DEMO` | Non | Client secret Spendesk **démo**. |
+| `SPENDESK_CLIENT_ID_TRUNK` | Non | Client ID Spendesk **trunk** (`SPENDESK_ENV=trunk`). |
+| `SPENDESK_CLIENT_SECRET_TRUNK` | Non | Client secret Spendesk **trunk**. |
 | `SPENDESK_BASE_URL` | Non | Surcharge de l’URL de l’API (sans `/` final). |
 | `DB_PATH` | Non | Chemin de la base SQLite utilisée pour le **monitoring** (`mcp_usage_events`). Défaut : `./data/clients.db`. |
 | `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
 | `USAGE_UI_SECRET` | Non | Si définie, la page **GET /usage** (dashboard MCP) exige `?secret=<valeur>` ou `Authorization: Bearer <valeur>`. |
 
-Le mode **stdio** (`npm start`) et le **fallback HTTP** utilisent uniquement **OAuth2 client credentials** : prod → `SPENDESK_CLIENT_ID` + `SPENDESK_CLIENT_SECRET` ; démo → `SPENDESK_USE_DEMO=true` + `SPENDESK_CLIENT_ID_DEMO` + `SPENDESK_CLIENT_SECRET_DEMO` (sinon réutilisation des vars prod en stdio, comme avant).
+Le mode **stdio** (`npm start`) et le **fallback HTTP** utilisent uniquement **OAuth2 client credentials** : `SPENDESK_ENV=production|demo|trunk` + la paire d’identifiants correspondante. URLs par défaut: prod `https://public-api.spendesk.com`, demo `https://public-api.demo.spendesk.com`, trunk `https://public-api.trunk.spendesk.dev`.
 
 Exemple avec un fichier `.env` (à ne pas commiter) :
 
@@ -42,10 +45,15 @@ Exemple avec un fichier `.env` (à ne pas commiter) :
 SPENDESK_CLIENT_ID=your_client_id
 SPENDESK_CLIENT_SECRET=your_client_secret
 
-# Démo / sandbox (optionnel)
-# SPENDESK_USE_DEMO=true
+# Demo (optionnel)
+# SPENDESK_ENV=demo
 # SPENDESK_CLIENT_ID_DEMO=your_demo_client_id
 # SPENDESK_CLIENT_SECRET_DEMO=your_demo_client_secret
+
+# Trunk (optionnel)
+# SPENDESK_ENV=trunk
+# SPENDESK_CLIENT_ID_TRUNK=your_trunk_client_id
+# SPENDESK_CLIENT_SECRET_TRUNK=your_trunk_client_secret
 ```
 
 ### Désactiver certains outils (expérimentaux)
@@ -83,10 +91,16 @@ export SPENDESK_CLIENT_ID=...
 export SPENDESK_CLIENT_SECRET=...
 npm start
 
-# Client credentials (démo)
-export SPENDESK_USE_DEMO=true
+# Client credentials (demo)
+export SPENDESK_ENV=demo
 export SPENDESK_CLIENT_ID_DEMO=...
 export SPENDESK_CLIENT_SECRET_DEMO=...
+npm start
+
+# Client credentials (trunk)
+export SPENDESK_ENV=trunk
+export SPENDESK_CLIENT_ID_TRUNK=...
+export SPENDESK_CLIENT_SECRET_TRUNK=...
 npm start
 ```
 
@@ -105,7 +119,7 @@ Dans les paramètres MCP de Cursor (ou dans le fichier de config MCP) :
       "command": "node",
       "args": ["/chemin/vers/spendesk-mcp-server/dist/index.js"],
       "env": {
-        "SPENDESK_USE_DEMO": "true",
+        "SPENDESK_ENV": "demo",
         "SPENDESK_CLIENT_ID_DEMO": "<client_id>",
         "SPENDESK_CLIENT_SECRET_DEMO": "<client_secret>"
       }
@@ -124,7 +138,7 @@ Ou avec `npx` depuis le répertoire du projet (même variables `SPENDESK_CLIENT_
       "args": ["-y", "tsx", "src/index.ts"],
       "cwd": "/chemin/vers/spendesk-mcp-server",
       "env": {
-        "SPENDESK_USE_DEMO": "true",
+        "SPENDESK_ENV": "demo",
         "SPENDESK_CLIENT_ID_DEMO": "<client_id>",
         "SPENDESK_CLIENT_SECRET_DEMO": "<client_secret>"
       }
@@ -278,7 +292,7 @@ Checklist fréquente :
 
 1. **Sandbox vs prod (cause n°1)** : les `client_id` / `client_secret` **trunk / sandbox** doivent parler à `beta-sandbox.api.trunk.spendesk.services`. Sur **Railway**, si `SPENDESK_USE_DEMO` est absent ou `false`, le serveur utilisait jusqu’ici **public-api.spendesk.com** même quand Dust envoyait des identifiants sandbox → token ou appels API invalides. **Corriger par une des deux options :**
    - **A.** Variables Railway : `SPENDESK_USE_DEMO=true` (et éventuellement `SPENDESK_BASE_URL` si tu utilises une autre URL de démo), **ou**
-   - **B.** Dans Dust → **Networking & Headers**, ajouter un 3ᵉ header : **`X-Spendesk-Use-Demo`** = `true` (ou `1`). Ainsi la session MCP utilise l’hôte sandbox pour le flux OAuth et les outils, **sans** changer le reste du déploiement.
+   - **B.** Dans Dust → **Networking & Headers**, ajouter un 3ᵉ header : **`X-Spendesk-Use-Demo`** = `true` (ou `1`). Ainsi la session MCP utilise l’hôte sandbox pour le flux OAuth et les outils, **sans** changer le reste du déploiement. *(Le serveur accepte aussi **`Spendesk-Use-Demo`** si l’UI Dust ne préfixe pas avec `X-`.)*
 
 2. **Bearer vide** : tu peux laisser le champ **Bearer Token** vide si tu utilises **`X-Spendesk-Client-Id`** + **`X-Spendesk-Client-Secret`**. Ne mets pas un espace ou un faux token.
 
