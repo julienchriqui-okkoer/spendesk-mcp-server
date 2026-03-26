@@ -59,10 +59,15 @@ function parseClientCredentialsFromBearer(token: string): ClientCredentials | nu
 
 /**
  * Resolve client credentials from headers (X-Spendesk-Client-Id + X-Spendesk-Client-Secret).
+ * Also accepts Spendesk-Client-Id / Spendesk-Client-Secret for clients that strip X-.
  */
 function getClientCredentialsFromHeaders(req: Request): ClientCredentials | null {
-  const id = (req.headers["x-spendesk-client-id"] as string)?.trim();
-  const secret = (req.headers["x-spendesk-client-secret"] as string)?.trim();
+  const id =
+    (req.headers["x-spendesk-client-id"] as string)?.trim() ||
+    (req.headers["spendesk-client-id"] as string)?.trim();
+  const secret =
+    (req.headers["x-spendesk-client-secret"] as string)?.trim() ||
+    (req.headers["spendesk-client-secret"] as string)?.trim();
   if (!id || !secret) return null;
   return { clientId: id, clientSecret: secret };
 }
