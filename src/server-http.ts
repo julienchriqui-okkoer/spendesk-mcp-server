@@ -163,6 +163,7 @@ function buildApi(
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
+const TRUST_PROXY = process.env.TRUST_PROXY?.trim() || "1";
 
 // Build allowedHosts only when ALLOWED_HOSTS is set (e.g. in production). When unset, no validation so healthchecks and first deploy succeed (e.g. Railway); set ALLOWED_HOSTS to your public domain and redeploy to restrict hosts.
 // Always allow Railway's healthcheck hostname
@@ -183,6 +184,15 @@ const allowedHosts = allowedHostsList?.length ? allowedHostsList : undefined;
 // Note: createMcpExpressApp adds middleware that might block healthcheck
 // We'll register routes before the MCP middleware takes effect
 const app = createMcpExpressApp({ host: HOST, ...(allowedHosts && { allowedHosts }) });
+// Railway/Render/Fly add X-Forwarded-* headers. Rate limiting needs trust proxy enabled.
+if (TRUST_PROXY.toLowerCase() === "true") {
+  app.set("trust proxy", true);
+} else if (TRUST_PROXY.toLowerCase() !== "false") {
+  const hops = Number(TRUST_PROXY);
+  if (Number.isInteger(hops) && hops >= 0) {
+    app.set("trust proxy", hops);
+  }
+}
 
 // Rate limiting: reduce abuse on public endpoint
 const globalLimiter = rateLimit({
