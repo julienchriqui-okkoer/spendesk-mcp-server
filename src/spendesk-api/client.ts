@@ -125,7 +125,9 @@ export class SpendeskClient {
     try {
       data = text ? (JSON.parse(text) as T) : ({} as T);
     } catch {
-      data = text as unknown as T;
+      // Keep a non-JSON error body so MCP can show it.
+      // This is particularly useful when Spendesk demo returns a plain-text 400.
+      data = ({ rawText: text.slice(0, 6000) } as unknown as T);
     }
     // Truncate purchase-orders at source so MCP never sees huge payload (lineItems[], payables[], etc.)
     if (method === "GET" && path.includes("purchase-orders") && data && typeof data === "object") {
