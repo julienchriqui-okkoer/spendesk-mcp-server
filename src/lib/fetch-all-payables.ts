@@ -111,16 +111,40 @@ type SnapshotPageResponse = {
 };
 
 async function createSnapshot(api: SpendeskClient, from: string, to: string): Promise<string> {
-  // API requires body wrapped as { query: {...} }; params at root cause 400
-  const body = { query: { fromPayableDate: from, toPayableDate: to } };
-  const res = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, body);
-  const id =
-    (res as SnapshotCreateResponse).key ??
-    (res as SnapshotCreateResponse).id ??
-    (res as SnapshotCreateResponse).snapshotId ??
-    (res as SnapshotCreateResponse).data?.id;
-  if (!id) throw new Error("Snapshot creation did not return an id/key");
-  return String(id);
+  // Some Spendesk hosts (notably demo) expect a flat snapshot payload (no `query` wrapper),
+  // while others accept the legacy wrapped format. Try flat first, then fallback.
+  const flatBody = { fromPayableDate: from, toPayableDate: to };
+  try {
+    const res = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, flatBody);
+    const id =
+      (res as SnapshotCreateResponse).key ??
+      (res as SnapshotCreateResponse).id ??
+      (res as SnapshotCreateResponse).snapshotId ??
+      (res as SnapshotCreateResponse).data?.id;
+    if (!id) throw new Error("Snapshot creation did not return an id/key");
+    return String(id);
+  } catch (err) {
+    const e = err as { statusCode?: number; body?: unknown; message?: string };
+    const bodyJson = e.body as
+      | { errors?: Array<{ detail?: string; source?: string }> }
+      | undefined;
+    const detail = bodyJson?.errors?.[0]?.detail;
+    const isAdditionalProperties =
+      typeof detail === "string" && detail.toLowerCase().includes("additional properties");
+
+    if (e.statusCode === 400 && isAdditionalProperties) {
+      const wrappedBody = { query: { fromPayableDate: from, toPayableDate: to } };
+      const res2 = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, wrappedBody);
+      const id =
+        (res2 as SnapshotCreateResponse).key ??
+        (res2 as SnapshotCreateResponse).id ??
+        (res2 as SnapshotCreateResponse).snapshotId ??
+        (res2 as SnapshotCreateResponse).data?.id;
+      if (!id) throw new Error("Snapshot creation did not return an id/key");
+      return String(id);
+    }
+    throw err;
+  }
 }
 
 /** Create snapshot; on 409 (future date or duplicate/processing), retry once: with to capped to today, or after delay if already capped. */

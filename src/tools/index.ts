@@ -502,7 +502,7 @@ function buildPayablesSnapshotPayload(args: {
       query.toPayableDate = p.to;
     }
 
-    // If only fromPayableDate is set, mirror it into toPayableDate to satisfy the API constraint.
+  // If only fromPayableDate is set, mirror it into toPayableDate to satisfy the API constraint.
     if (query.fromPayableDate != null && query.toPayableDate === undefined) {
       query.toPayableDate = query.fromPayableDate;
     }
@@ -511,8 +511,9 @@ function buildPayablesSnapshotPayload(args: {
     // additional properties that the Public API would reject.
   }
 
-  // API requires body wrapped as { query: {...} }; params at root cause 400.
-  return Object.keys(query).length > 0 ? { query } : {};
+  // Spendesk Public API snapshot payload is expected as a flat JSON object (no wrapper),
+  // e.g. { "fromPayableDate": "...", "toPayableDate": "..." }.
+  return Object.keys(query).length > 0 ? query : {};
 }
 
 export function registerTools(mcp: McpServer, api: SpendeskClient): void {
@@ -552,15 +553,30 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         return api.get(SpendeskPaths.getBankFees, base);
       }
       case "spendesk_create_payables_snapshot": {
-        const body = buildPayablesSnapshotPayload(args as Parameters<typeof buildPayablesSnapshotPayload>[0]);
+        const flatBody = buildPayablesSnapshotPayload(
+          args as Parameters<typeof buildPayablesSnapshotPayload>[0]
+        );
+        const wrappedBody = Object.keys(flatBody).length > 0 ? { query: flatBody } : {};
+
+        // Try flat first (demo schema is picky). If it fails with "additional properties",
+        // retry wrapped format for compatibility with other hosts.
         try {
-          return await api.post(SpendeskPaths.createPayablesSnapshot, body);
+          return await api.post(SpendeskPaths.createPayablesSnapshot, flatBody);
         } catch (err) {
           const e = err as { statusCode?: number; body?: unknown; message?: string };
+          const bodyJson = e.body as
+            | { errors?: Array<{ detail?: string; source?: string }> }
+            | undefined;
+          const detail = bodyJson?.errors?.[0]?.detail;
+          const isAdditionalProperties =
+            typeof detail === "string" && detail.toLowerCase().includes("additional properties");
+
+          if (e.statusCode === 400 && isAdditionalProperties && wrappedBody && Object.keys(wrappedBody).length > 0) {
+            return await api.post(SpendeskPaths.createPayablesSnapshot, wrappedBody);
+          }
+
           if (e.statusCode && e.body) {
-            throw new Error(
-              `${e.message ?? "Spendesk API error"} — body: ${JSON.stringify(e.body)}`
-            );
+            throw new Error(`${e.message ?? "Spendesk API error"} — body: ${JSON.stringify(e.body)}`);
           }
           throw err;
         }
