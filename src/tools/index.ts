@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SpendeskClient } from "../spendesk-api/client.js";
+import { SpendeskApiError } from "../spendesk-api/client.js";
 import { SpendeskPaths } from "../spendesk-api/endpoints.js";
 import {
   fetchPayablesForPeriod,
@@ -126,6 +127,104 @@ const settlementsSchema = {
 
 
 const dateYMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
+
+type MoneyInput = { amount?: unknown; currency?: unknown; precision?: unknown; value?: unknown };
+type MoneyNormalized = { amount: number; currency: string; precision: number };
+
+function toIsoDateTime(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  // Spendesk expects startDate/endDate as date-time.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00.000Z`;
+  return value;
+}
+
+function normalizeMoneyObject(input: unknown, fallbackCurrency?: string | null): MoneyNormalized | null {
+  if (input == null) return null;
+  if (typeof input === "number") {
+    if (!fallbackCurrency) return null;
+    return { amount: input, currency: fallbackCurrency, precision: 2 };
+  }
+  if (typeof input !== "object") return null;
+  const obj = input as MoneyInput;
+  const currency = (obj.currency ?? fallbackCurrency) as unknown;
+  const precision = obj.precision ?? 2;
+  const amountCandidate = obj.amount ?? obj.value;
+  const amount = Number(amountCandidate);
+  if (typeof currency !== "string") return null;
+  if (!Number.isFinite(amount)) return null;
+  const p = Number(precision);
+  if (!Number.isFinite(p)) return null;
+  return { amount, currency, precision: p };
+}
+
+function normalizeCreatePurchaseOrderPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...payload };
+
+  // Required by API: customFieldAssociations must exist.
+  if (!Array.isArray(out.customFieldAssociations)) out.customFieldAssociations = [];
+
+  // Required by API: startDate/endDate must be date-time.
+  out.startDate = toIsoDateTime(out.startDate);
+  out.endDate = toIsoDateTime(out.endDate);
+
+  // Normalize amount/netAmount:
+  // Spendesk expects:
+  // - amount: { amount, currency, precision }
+  // - netAmount: { amount, currency, precision }
+  //
+  // We accept legacy user payloads like:
+  // - { amount: { value, currency } } or { netAmount: { value, currency } }
+  // - { amount: { netAmount: 12000, currency: "USD" } }
+  const amountIn = out.amount;
+  const netAmountIn = out.netAmount;
+  let currencyFromPayload: string | null = null;
+
+  // Case: amount.netAmount provided by user (attempts seen in logs)
+  if (amountIn && typeof amountIn === "object" && "netAmount" in (amountIn as Record<string, unknown>)) {
+    const maybeCurrency = (amountIn as Record<string, unknown>).currency as unknown;
+    currencyFromPayload = typeof maybeCurrency === "string" ? maybeCurrency : null;
+    const nested = (amountIn as Record<string, unknown>).netAmount as unknown;
+    // If top-level netAmount missing, use nested.
+    if (netAmountIn == null) out.netAmount = nested;
+    // If top-level amount missing or is just a wrapper, mirror nested to amount.
+    // (Both amount and netAmount are required by API.)
+    if (out.amount && typeof out.amount === "object" && (out.amount as Record<string, unknown>).value == null) {
+      out.amount = (nested as unknown) as unknown;
+    }
+    if (typeof maybeCurrency === "string") {
+      // Keep currency at the same level for normalizer.
+      if (typeof out.netAmount === "object" && out.netAmount) {
+        (out.netAmount as Record<string, unknown>).currency ??= maybeCurrency;
+      }
+      if (typeof out.amount === "object" && out.amount) {
+        (out.amount as Record<string, unknown>).currency ??= maybeCurrency;
+      }
+    }
+  }
+
+  const amountCurrency =
+    typeof (out.amount as Record<string, unknown> | undefined)?.currency === "string"
+      ? ((out.amount as Record<string, unknown>).currency as string)
+      : null;
+  const netAmountCurrency =
+    typeof (out.netAmount as Record<string, unknown> | undefined)?.currency === "string"
+      ? ((out.netAmount as Record<string, unknown>).currency as string)
+      : null;
+
+  const currencyGuess = currencyFromPayload ?? amountCurrency ?? netAmountCurrency ?? null;
+
+  const normalizedAmount = normalizeMoneyObject(out.amount, currencyGuess);
+  const normalizedNetAmount = normalizeMoneyObject(out.netAmount, currencyGuess);
+
+  // API requires both fields; if one missing, mirror the other.
+  const finalAmount = normalizedAmount ?? normalizedNetAmount;
+  const finalNetAmount = normalizedNetAmount ?? normalizedAmount;
+
+  if (finalAmount) out.amount = finalAmount;
+  if (finalNetAmount) out.netAmount = finalNetAmount;
+
+  return out;
+}
 
 // Public API payables snapshot query (publicPayableQuerySchema)
 const payablesSnapshotSchema = {
@@ -754,7 +853,13 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         });
       }
       case "spendesk_create_purchase_order":
-        return api.post(SpendeskPaths.createPurchaseOrder, args.payload);
+        if (!args.payload || typeof args.payload !== "object") {
+          throw new Error("spendesk_create_purchase_order: payload must be an object");
+        }
+        return api.post(
+          SpendeskPaths.createPurchaseOrder,
+          normalizeCreatePurchaseOrderPayload(args.payload as Record<string, unknown>)
+        );
 
       case "spendesk_get_purchase_order": {
         const id = String(args.purchaseOrderId ?? "").trim();
@@ -1000,7 +1105,15 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
       return result;
     } catch (err) {
       status = "error";
-      errorCode = err instanceof Error ? err.name || err.message : "UnknownError";
+      let thrownErr: unknown = err;
+      if (err instanceof SpendeskApiError) {
+        const bodyStr = err.body ? JSON.stringify(err.body).slice(0, 4000) : "";
+        const enhancedMessage = bodyStr
+          ? `${err.message}\nSpendesk error body: ${bodyStr}`
+          : `${err.message}`;
+        thrownErr = new Error(enhancedMessage);
+      }
+      errorCode = thrownErr instanceof Error ? thrownErr.name || thrownErr.message : "UnknownError";
       const durationMs = Date.now() - start;
 
       logToolCallUsage({
@@ -1011,11 +1124,11 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
         errorCode,
         resultSize: null,
         meta: {
-          message: err instanceof Error ? err.message : String(err),
+          message: thrownErr instanceof Error ? thrownErr.message : String(thrownErr),
         },
       });
 
-      throw err;
+      throw thrownErr;
     }
   };
 

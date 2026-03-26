@@ -89,6 +89,21 @@ export class SpendeskClient {
       "Content-Type": "application/json",
       Accept: "application/json",
     };
+
+    const debug =
+      process.env.SPENDESK_DEBUG_HTTP_REQUESTS === "true" ||
+      process.env.SPENDESK_DEBUG_HTTP_REQUESTS === "1";
+    if (debug) {
+      const safeHeaders = { ...headers };
+      if (safeHeaders.Authorization) safeHeaders.Authorization = "Bearer <redacted>";
+      const bodyPreview =
+        options?.body !== undefined ? JSON.stringify(options.body).slice(0, 4000) : undefined;
+      console.log(
+        `[SpendeskClient] ${method} ${url.toString()} headers=`,
+        safeHeaders,
+        bodyPreview ? ` body=${bodyPreview}` : ""
+      );
+    }
     let res: Response;
     try {
       res = await fetch(url.toString(), {
