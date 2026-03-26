@@ -82,6 +82,11 @@ const suppliersSchema = {
     .describe("Items per page (mapped to API pageSize, max 30 for suppliers endpoint)."),
   filters: filtersSchema,
   supplierFilters: supplierFilterSchema.describe("Dedicated suppliers filters (merged with filters)."),
+  fetchAll: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("When true, fetch all pages. Default false to keep responses small for MCP clients."),
 };
 
 // Bank fees: date filters to avoid loading all fees (e.g. daily agent needs only yesterday)
@@ -621,6 +626,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           page?: number;
           perPage?: number;
           filters?: Record<string, unknown>;
+          fetchAll?: boolean;
           supplierFilters?: {
             ids?: string | string[];
             updatedBefore?: string;
@@ -633,6 +639,11 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
             isArchived?: boolean;
           };
         });
+        const fetchAll = (args as { fetchAll?: boolean }).fetchAll === true;
+        if (!fetchAll) {
+          return api.get(SpendeskPaths.getSuppliers, supplierParams);
+        }
+
         const { page: _p2, pageSize: _ps2, ...baseSupplier } = supplierParams;
         const requestedPerPage = Math.min(30, Math.max(1, Number((args as { perPage?: number }).perPage ?? 30)));
         return fetchAllPages(api, SpendeskPaths.getSuppliers, baseSupplier, {
@@ -1459,7 +1470,7 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
   maybeReg("spendesk_get_suppliers", () =>
     mcp.tool(
       "spendesk_get_suppliers",
-    "Get full suppliers list (all pages). Supports dedicated supplier filters (ids, updatedBefore/After, createdBefore/After, bankCountry, iban, vatNumber, isArchived) and generic filters fallback. Returns { data: [...], meta: { pagination: { total, pageSize } } }. For top suppliers by spend prefer spendesk_analyze_spend.",
+    "Get suppliers list. By default returns only requested page to keep MCP payloads small. Set fetchAll=true to aggregate all pages. Supports dedicated supplier filters (ids, updatedBefore/After, createdBefore/After, bankCountry, iban, vatNumber, isArchived) and generic filters fallback.",
     suppliersSchema,
       async (args) => toContent(await run("spendesk_get_suppliers", args))
     )
