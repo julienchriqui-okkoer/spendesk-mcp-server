@@ -36,7 +36,7 @@ Variables d'environnement :
 | `DOCS_URL` | Non | URL de la documentation (Mintlify). Si définie, `GET /doc` redirige vers cette URL. |
 | `USAGE_UI_SECRET` | Non | Si définie, la page **GET /usage** (dashboard MCP) exige `?secret=<valeur>` ou `Authorization: Bearer <valeur>`. |
 
-Le mode **stdio** (`npm start`) et le **fallback HTTP** utilisent uniquement **OAuth2 client credentials** : `SPENDESK_ENV=production|demo|trunk` + la paire d’identifiants correspondante. URLs par défaut: prod `https://public-api.spendesk.com`, demo `https://public-api.demo.spendesk.com`, trunk `https://public-api.trunk.spendesk.dev`.
+Le mode **stdio** (`npm start`) et le **fallback HTTP** utilisent uniquement **OAuth2 client credentials** : `SPENDESK_ENV=production|demo|trunk` + la paire d’identifiants correspondante. URLs par défaut: prod `https://public-api.spendesk.com`, demo `https://public-api.demo.spendesk.com`, trunk `https://beta-sandbox.api.trunk.spendesk.services` (historique).
 
 Exemple avec un fichier `.env` (à ne pas commiter) :
 

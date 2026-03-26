@@ -32,7 +32,7 @@ export type EndpointSpec = {
 export const API_REFERENCE = {
   baseUrl: "https://public-api.spendesk.com",
   baseUrlDemo: "https://public-api.demo.spendesk.com",
-  baseUrlTrunk: "https://public-api.trunk.spendesk.dev",
+  baseUrlTrunk: "https://beta-sandbox.api.trunk.spendesk.services",
   docUrl: "https://developer.spendesk.com/reference/general",
   version: "v1",
 

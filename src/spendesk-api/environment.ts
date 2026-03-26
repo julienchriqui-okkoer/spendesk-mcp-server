@@ -3,7 +3,9 @@ export type SpendeskEnvironment = "production" | "demo" | "trunk";
 export const SPENDESK_BASE_URLS: Record<SpendeskEnvironment, string> = {
   production: "https://public-api.spendesk.com",
   demo: "https://public-api.demo.spendesk.com",
-  trunk: "https://public-api.trunk.spendesk.dev",
+  // Legacy "trunk/sandbox" host used by the server before adding SPENDESK_ENV.
+  // Keeping this avoids breaking existing trunk support.
+  trunk: "https://beta-sandbox.api.trunk.spendesk.services",
 };
 
 function parseBoolean(value?: string): boolean {
