@@ -133,13 +133,44 @@ async function createSnapshot(api: SpendeskClient, from: string, to: string): Pr
       typeof detail === "string" && detail.toLowerCase().includes("additional properties");
 
     if (e.statusCode === 400 && isAdditionalProperties) {
-      const wrappedBody = { query: { fromPayableDate: from, toPayableDate: to } };
-      const res2 = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, wrappedBody);
+      // 1) legacy wrapped { query: ... }
+      try {
+        const wrappedBody = { query: { fromPayableDate: from, toPayableDate: to } };
+        const res2 = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, wrappedBody);
+        const id =
+          (res2 as SnapshotCreateResponse).key ??
+          (res2 as SnapshotCreateResponse).id ??
+          (res2 as SnapshotCreateResponse).snapshotId ??
+          (res2 as SnapshotCreateResponse).data?.id;
+        if (!id) throw new Error("Snapshot creation did not return an id/key");
+        return String(id);
+      } catch {
+        // fall through
+      }
+
+      // 2) legacy { from, to } form
+      const legacyFromToFlat = { from, to };
+      try {
+        const res3 = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, legacyFromToFlat);
+        const id =
+          (res3 as SnapshotCreateResponse).key ??
+          (res3 as SnapshotCreateResponse).id ??
+          (res3 as SnapshotCreateResponse).snapshotId ??
+          (res3 as SnapshotCreateResponse).data?.id;
+        if (!id) throw new Error("Snapshot creation did not return an id/key");
+        return String(id);
+      } catch {
+        // fall through
+      }
+
+      // 3) legacy wrapped { query: { from, to } }
+      const legacyFromToWrapped = { query: { from, to } };
+      const res4 = await api.post<SnapshotCreateResponse>(SpendeskPaths.createPayablesSnapshot, legacyFromToWrapped);
       const id =
-        (res2 as SnapshotCreateResponse).key ??
-        (res2 as SnapshotCreateResponse).id ??
-        (res2 as SnapshotCreateResponse).snapshotId ??
-        (res2 as SnapshotCreateResponse).data?.id;
+        (res4 as SnapshotCreateResponse).key ??
+        (res4 as SnapshotCreateResponse).id ??
+        (res4 as SnapshotCreateResponse).snapshotId ??
+        (res4 as SnapshotCreateResponse).data?.id;
       if (!id) throw new Error("Snapshot creation did not return an id/key");
       return String(id);
     }

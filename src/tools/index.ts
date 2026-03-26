@@ -557,6 +557,12 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           args as Parameters<typeof buildPayablesSnapshotPayload>[0]
         );
         const wrappedBody = Object.keys(flatBody).length > 0 ? { query: flatBody } : {};
+        const from = flatBody.fromPayableDate as unknown;
+        const to = flatBody.toPayableDate as unknown;
+        const legacyFromToFlat =
+          typeof from === "string" && typeof to === "string" ? ({ from, to } as Record<string, unknown>) : null;
+        const legacyFromToWrapped =
+          legacyFromToFlat ? ({ query: legacyFromToFlat } as Record<string, unknown>) : null;
 
         // Try flat first (demo schema is picky). If it fails with "additional properties",
         // retry wrapped format for compatibility with other hosts.
@@ -571,8 +577,27 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
           const isAdditionalProperties =
             typeof detail === "string" && detail.toLowerCase().includes("additional properties");
 
-          if (e.statusCode === 400 && isAdditionalProperties && wrappedBody && Object.keys(wrappedBody).length > 0) {
-            return await api.post(SpendeskPaths.createPayablesSnapshot, wrappedBody);
+          if (e.statusCode === 400 && isAdditionalProperties) {
+            // 1) wrapped { query: ... }
+            if (wrappedBody && Object.keys(wrappedBody).length > 0) {
+              try {
+                return await api.post(SpendeskPaths.createPayablesSnapshot, wrappedBody);
+              } catch {
+                // fall through
+              }
+            }
+            // 2) legacy {from,to} (some hosts accept this instead of fromPayableDate/toPayableDate)
+            if (legacyFromToFlat) {
+              try {
+                return await api.post(SpendeskPaths.createPayablesSnapshot, legacyFromToFlat);
+              } catch {
+                // fall through
+              }
+            }
+            // 3) legacy wrapped { query: {from,to} }
+            if (legacyFromToWrapped) {
+              return await api.post(SpendeskPaths.createPayablesSnapshot, legacyFromToWrapped);
+            }
           }
 
           if (e.statusCode && e.body) {
