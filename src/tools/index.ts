@@ -1106,11 +1106,20 @@ export function registerTools(mcp: McpServer, api: SpendeskClient): void {
     } catch (err) {
       status = "error";
       let thrownErr: unknown = err;
-      if (err instanceof SpendeskApiError) {
-        const bodyStr = err.body ? JSON.stringify(err.body).slice(0, 4000) : "";
-        const enhancedMessage = bodyStr
-          ? `${err.message}\nSpendesk error body: ${bodyStr}`
-          : `${err.message}`;
+      const maybe = err as unknown as { name?: string; body?: unknown; statusCode?: number; message?: string };
+      const isSpendesk =
+        maybe?.name === "SpendeskApiError" ||
+        maybe?.constructor?.name === "SpendeskApiError" ||
+        (err instanceof SpendeskApiError);
+      if (isSpendesk) {
+        const body =
+          (maybe as unknown as { body?: unknown }).body ??
+          // fallback: TS/JS interop
+          (maybe as any).body;
+        const bodyStr =
+          body !== undefined && body !== null ? JSON.stringify(body).slice(0, 4000) : "";
+        const msg = typeof maybe?.message === "string" ? maybe.message : err instanceof Error ? err.message : String(err);
+        const enhancedMessage = bodyStr ? `${msg}\nSpendesk error body: ${bodyStr}` : msg;
         thrownErr = new Error(enhancedMessage);
       }
       errorCode = thrownErr instanceof Error ? thrownErr.name || thrownErr.message : "UnknownError";
