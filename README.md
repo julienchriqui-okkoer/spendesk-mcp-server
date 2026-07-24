@@ -5,6 +5,8 @@ Serveur [MCP](https://modelcontextprotocol.io/) qui expose l'[API publique Spend
 - **Automatiser des intégrations ERP** (NetSuite, Xero, QuickBooks, DATEV, etc.)
 - **Créer des tableaux de bord** à partir des données Spendesk (settlements, payables, fournisseurs, utilisateurs, etc.)
 
+📚 **[Bibliothèque de skills MCP finance](https://mcp.spendesk.com)** — 65+ skills prêts à l'emploi (accrual PO, revue fournisseurs, clôture mensuelle...) pour Claude et Dust au-dessus de ce serveur MCP, plus un blog et un guide pas à pas.
+
 ## Prérequis
 
 - Node.js ≥ 18
